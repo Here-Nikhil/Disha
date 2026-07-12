@@ -58,7 +58,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
 
   const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress || mockUser.name;
   const displayEmail = user?.primaryEmailAddress?.emailAddress || mockUser.email;
-  const isAdmin = mockUser.role === "admin";
+  const isAdmin = user?.publicMetadata?.role === "admin";
 
   const handleNew = async () => {
     const id = await createWorkspace("New workspace");
