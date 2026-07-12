@@ -10,15 +10,28 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ToolsRouteImport } from './routes/tools'
+import { Route as SignUpRouteImport } from './routes/sign-up'
+import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PromptsRouteImport } from './routes/prompts'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WorkspaceIdRouteImport } from './routes/workspace.$id'
+import { Route as SignInSsoCallbackRouteImport } from './routes/sign-in.sso-callback'
 
 const ToolsRoute = ToolsRouteImport.update({
   id: '/tools',
   path: '/tools',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignUpRoute = SignUpRouteImport.update({
+  id: '/sign-up',
+  path: '/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -46,13 +59,21 @@ const WorkspaceIdRoute = WorkspaceIdRouteImport.update({
   path: '/workspace/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SignInSsoCallbackRoute = SignInSsoCallbackRouteImport.update({
+  id: '/sso-callback',
+  path: '/sso-callback',
+  getParentRoute: () => SignInRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/prompts': typeof PromptsRoute
   '/settings': typeof SettingsRoute
+  '/sign-in': typeof SignInRouteWithChildren
+  '/sign-up': typeof SignUpRoute
   '/tools': typeof ToolsRoute
+  '/sign-in/sso-callback': typeof SignInSsoCallbackRoute
   '/workspace/$id': typeof WorkspaceIdRoute
 }
 export interface FileRoutesByTo {
@@ -60,7 +81,10 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/prompts': typeof PromptsRoute
   '/settings': typeof SettingsRoute
+  '/sign-in': typeof SignInRouteWithChildren
+  '/sign-up': typeof SignUpRoute
   '/tools': typeof ToolsRoute
+  '/sign-in/sso-callback': typeof SignInSsoCallbackRoute
   '/workspace/$id': typeof WorkspaceIdRoute
 }
 export interface FileRoutesById {
@@ -69,7 +93,10 @@ export interface FileRoutesById {
   '/admin': typeof AdminRoute
   '/prompts': typeof PromptsRoute
   '/settings': typeof SettingsRoute
+  '/sign-in': typeof SignInRouteWithChildren
+  '/sign-up': typeof SignUpRoute
   '/tools': typeof ToolsRoute
+  '/sign-in/sso-callback': typeof SignInSsoCallbackRoute
   '/workspace/$id': typeof WorkspaceIdRoute
 }
 export interface FileRouteTypes {
@@ -79,17 +106,32 @@ export interface FileRouteTypes {
     | '/admin'
     | '/prompts'
     | '/settings'
+    | '/sign-in'
+    | '/sign-up'
     | '/tools'
+    | '/sign-in/sso-callback'
     | '/workspace/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/prompts' | '/settings' | '/tools' | '/workspace/$id'
+  to:
+    | '/'
+    | '/admin'
+    | '/prompts'
+    | '/settings'
+    | '/sign-in'
+    | '/sign-up'
+    | '/tools'
+    | '/sign-in/sso-callback'
+    | '/workspace/$id'
   id:
     | '__root__'
     | '/'
     | '/admin'
     | '/prompts'
     | '/settings'
+    | '/sign-in'
+    | '/sign-up'
     | '/tools'
+    | '/sign-in/sso-callback'
     | '/workspace/$id'
   fileRoutesById: FileRoutesById
 }
@@ -98,6 +140,8 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
   PromptsRoute: typeof PromptsRoute
   SettingsRoute: typeof SettingsRoute
+  SignInRoute: typeof SignInRouteWithChildren
+  SignUpRoute: typeof SignUpRoute
   ToolsRoute: typeof ToolsRoute
   WorkspaceIdRoute: typeof WorkspaceIdRoute
 }
@@ -109,6 +153,20 @@ declare module '@tanstack/react-router' {
       path: '/tools'
       fullPath: '/tools'
       preLoaderRoute: typeof ToolsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-up': {
+      id: '/sign-up'
+      path: '/sign-up'
+      fullPath: '/sign-up'
+      preLoaderRoute: typeof SignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -146,17 +204,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sign-in/sso-callback': {
+      id: '/sign-in/sso-callback'
+      path: '/sso-callback'
+      fullPath: '/sign-in/sso-callback'
+      preLoaderRoute: typeof SignInSsoCallbackRouteImport
+      parentRoute: typeof SignInRoute
+    }
   }
 }
+
+interface SignInRouteChildren {
+  SignInSsoCallbackRoute: typeof SignInSsoCallbackRoute
+}
+
+const SignInRouteChildren: SignInRouteChildren = {
+  SignInSsoCallbackRoute: SignInSsoCallbackRoute,
+}
+
+const SignInRouteWithChildren =
+  SignInRoute._addFileChildren(SignInRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
   PromptsRoute: PromptsRoute,
   SettingsRoute: SettingsRoute,
+  SignInRoute: SignInRouteWithChildren,
+  SignUpRoute: SignUpRoute,
   ToolsRoute: ToolsRoute,
   WorkspaceIdRoute: WorkspaceIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

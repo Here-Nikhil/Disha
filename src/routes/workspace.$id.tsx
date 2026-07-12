@@ -112,7 +112,7 @@ function ChatView({
   }, [lastMsg?.id, thinking]);
 
   const handleSend = (text?: string) => {
-    const v = (text ?? value).trim();
+    const v = typeof text === "string" ? text.trim() : value.trim();
     if (!v) return;
     onSend(v);
     setValue("");
@@ -233,7 +233,7 @@ function Composer({
 }: {
   value: string;
   onChange: (v: string) => void;
-  onSend: () => void;
+  onSend: (text?: string) => void;
   placeholder: string;
 }) {
   const [listening, setListening] = useState(false);
@@ -318,7 +318,7 @@ function Composer({
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      toast.error("Microphone recording isn't supported in this browser.");
+      toast.error("Microphone recording is not supported in this browser.");
       return;
     }
     try {
@@ -389,7 +389,7 @@ function Composer({
           <Mic className="size-4" />
         )}
       </Button>
-      <Button size="icon" onClick={onSend} disabled={!value.trim()}>
+      <Button size="icon" onClick={() => onSend()} disabled={!value.trim()}>
         <ArrowUp className="size-4" />
       </Button>
     </div>

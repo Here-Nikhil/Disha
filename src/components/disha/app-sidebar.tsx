@@ -1,5 +1,6 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useUser } from "@clerk/tanstack-react-start";
 import { useStore } from "@/lib/mock-store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -50,9 +51,14 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
   const setActive = useStore((s) => s.setActiveWorkspace);
   const createWorkspace = useStore((s) => s.createWorkspace);
   const deleteWorkspace = useStore((s) => s.deleteWorkspace);
-  const user = useStore((s) => s.user);
+  const mockUser = useStore((s) => s.user);
+  const { user } = useUser();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress || mockUser.name;
+  const displayEmail = user?.primaryEmailAddress?.emailAddress || mockUser.email;
+  const isAdmin = mockUser.role === "admin";
 
   const handleNew = async () => {
     const id = await createWorkspace("New workspace");
@@ -130,7 +136,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
       <nav className="px-3">
         <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Navigate</div>
         <div className="space-y-0.5">
-          {[...navLinks, ...(user.role === "admin" ? [adminLink] : [])].map((l) => {
+          {[...navLinks, ...(isAdmin ? [adminLink] : [])].map((l) => {
             const active =
               l.to === "/"
                 ? pathname === "/"
@@ -161,12 +167,16 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
       {/* User */}
       <div className="border-t border-border p-3">
         <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">
-          <div className="grid size-8 shrink-0 place-items-center rounded-full bg-card ring-1 ring-border">
-            <Sparkles className="size-4 text-primary" />
+          <div className="grid size-8 shrink-0 place-items-center rounded-full bg-card ring-1 ring-border overflow-hidden">
+            {user?.imageUrl ? (
+              <img src={user.imageUrl} alt={displayName} className="size-8 rounded-full object-cover" />
+            ) : (
+              <Sparkles className="size-4 text-primary" />
+            )}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{user.name}</div>
-            <div className="truncate text-[11px] text-muted-foreground">{user.email}</div>
+            <div className="truncate text-sm font-medium">{displayName}</div>
+            <div className="truncate text-[11px] text-muted-foreground">{displayEmail}</div>
           </div>
           <Link
             to="/settings"
