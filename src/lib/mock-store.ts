@@ -24,17 +24,20 @@ export type Phase =
 
 export type MessageKind = "text" | "tool" | "consensus";
 
+export type ToolRec = {
+  name: string;
+  description: string;
+  paid: boolean;
+  category: ToolCategory;
+};
+
 export type ChatMessage = {
   id: string;
   author: "user" | "disha";
   kind: MessageKind;
   content: string;
-  tool?: {
-    name: string;
-    description: string;
-    paid: boolean;
-    category: ToolCategory;
-  };
+  tool?: ToolRec;
+  tools?: ToolRec[];
   consensus?: {
     options: { model: string; recommendation: string }[];
     finalIndex: number;
