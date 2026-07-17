@@ -239,6 +239,39 @@ async def list_workspaces(
     )
     return result.scalars().all()
 
+@app.delete("/workspaces/{workspace_id}")
+async def delete_workspace(
+    workspace_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    workspace = await ensure_workspace(db, workspace_id)
+    if workspace.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not your workspace")
+
+    conversation_result = await db.execute(
+        select(Conversation).where(Conversation.workspace_id == workspace.id)
+    )
+    conversation = conversation_result.scalar_one_or_none()
+    if conversation:
+        await db.execute(
+            select(Message).where(Message.conversation_id == conversation.id)
+        )
+        from sqlalchemy import delete as sql_delete
+        await db.execute(sql_delete(Message).where(Message.conversation_id == conversation.id))
+        await db.delete(conversation)
+
+    from models import Project
+    project_result = await db.execute(
+        select(Project).where(Project.workspace_id == workspace.id)
+    )
+    project = project_result.scalar_one_or_none()
+    if project:
+        await db.delete(project)
+
+    await db.delete(workspace)
+    await db.flush()
+    return {"status": "deleted"}
 
 @app.get("/workspaces/{workspace_id}/messages", response_model=list[MessageResponse])
 async def get_messages(

@@ -28,6 +28,8 @@ export const api = {
   getWorkspaces: () => req<any[]>("/workspaces"),
   createWorkspace: (name: string) =>
     req<any>("/workspaces", { method: "POST", body: JSON.stringify({ name }) }),
+  deleteWorkspace: (id: string) =>
+    req<any>(`/workspaces/${id}`, { method: "DELETE" }),
   getMessages: (workspaceId: string) =>
     req<any[]>(`/workspaces/${workspaceId}/messages`),
   sendMessage: (workspaceId: string, content: string) =>

@@ -11,24 +11,6 @@ from models import ApiKey, Conversation, Message, Project, ToolRegistry, User, W
 from schemas import MessageResponse, ToolData, ConsensusData, ConsensusOption
 
 
-async def get_or_create_default_user(db: AsyncSession) -> User:
-    settings = get_settings()
-    result = await db.execute(select(User).where(User.email == settings.default_user_email))
-    user = result.scalar_one_or_none()
-    if user:
-        return user
-
-    user = User(
-        email=settings.default_user_email,
-        name=settings.default_user_name,
-        role="admin",
-        auth_provider="local",
-    )
-    db.add(user)
-    await db.flush()
-    return user
-
-
 async def get_user_api_keys(db: AsyncSession, user_id: uuid.UUID) -> dict[str, str]:
     settings = get_settings()
     if not settings.master_encryption_key:
@@ -78,13 +60,34 @@ async def ensure_project(db: AsyncSession, workspace: Workspace) -> Project:
 
 def message_to_response(message: Message) -> MessageResponse:
     tool = None
+    tools = None
+
     if message.tool_data:
-        tool = ToolData(
-            name=message.tool_data.get("name", ""),
-            description=message.tool_data.get("description", ""),
-            paid=bool(message.tool_data.get("paid", False)),
-            category=message.tool_data.get("category", "Backend"),
-        )
+        if isinstance(message.tool_data, list):
+            tools = [
+                ToolData(
+                    name=t.get("name", ""),
+                    description=t.get("description", ""),
+                    paid=bool(t.get("paid", False)),
+                    category=t.get("category", "Backend"),
+                    best_for=t.get("best_for"),
+                    pros=t.get("pros"),
+                    cons=t.get("cons"),
+                )
+                for t in message.tool_data
+            ]
+            tool = tools[0] if tools else None
+        else:
+            tool = ToolData(
+                name=message.tool_data.get("name", ""),
+                description=message.tool_data.get("description", ""),
+                paid=bool(message.tool_data.get("paid", False)),
+                category=message.tool_data.get("category", "Backend"),
+                best_for=message.tool_data.get("best_for"),
+                pros=message.tool_data.get("pros"),
+                cons=message.tool_data.get("cons"),
+            )
+            tools = [tool]
 
     consensus = None
     if message.consensus_data:
@@ -108,6 +111,7 @@ def message_to_response(message: Message) -> MessageResponse:
         kind=message.kind,
         content=message.content,
         tool=tool,
+        tools=tools,
         consensus=consensus,
         created_at=message.created_at,
     )

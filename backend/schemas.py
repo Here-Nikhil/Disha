@@ -32,6 +32,9 @@ class ToolData(BaseModel):
     description: str
     paid: bool
     category: str
+    best_for: str | None = None
+    pros: list[str] | None = None
+    cons: list[str] | None = None
 
 
 class ConsensusOption(BaseModel):
@@ -52,6 +55,7 @@ class MessageResponse(BaseModel):
     kind: str
     content: str
     tool: ToolData | None = None
+    tools: list[ToolData] | None = None
     consensus: ConsensusData | None = None
     created_at: datetime
 
@@ -121,7 +125,7 @@ class ConsensusEngineResult(BaseModel):
 class OrchestratorResult(BaseModel):
     kind: str
     content: str
-    tool_data: dict[str, Any] | None = None
+    tool_data: list[dict[str, Any]] | dict[str, Any] | None = None
     consensus_data: dict[str, Any] | None = None
     phase: str | None = None
     tech_stack: list[str] | None = None
