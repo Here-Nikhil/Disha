@@ -2,17 +2,33 @@ import type { ReactNode } from "react";
 import { AppSidebar, MobileSidebarTrigger } from "@/components/disha/app-sidebar";
 import { useAuth } from "@clerk/tanstack-react-start";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { setAuthToken } from "@/lib/api";
+import { useStore } from "@/lib/mock-store";
 
 export function AppShell({ children, header }: { children: ReactNode; header?: ReactNode }) {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const navigate = useNavigate();
+  const loadWorkspaces = useStore((s) => s.loadWorkspaces);
+  const initialized = useRef(false);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
       navigate({ to: "/sign-in" });
     }
   }, [isLoaded, isSignedIn, navigate]);
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn && !initialized.current) {
+      initialized.current = true;
+      getToken().then((token) => {
+        if (token) {
+          setAuthToken(token);
+          loadWorkspaces();
+        }
+      });
+    }
+  }, [isLoaded, isSignedIn, getToken, loadWorkspaces]);
 
   if (!isLoaded || !isSignedIn) {
     return (

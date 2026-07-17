@@ -243,20 +243,18 @@ export const useStore = create<State>((set, get) => ({
   loadWorkspaces: async () => {
     try {
       const data = await api.getWorkspaces();
-      if (data && data.length > 0) {
-        const mapped: Workspace[] = data.map((w: any) => ({
-          id: w.id,
-          name: w.name,
-          activity: "active",
-          techStack: w.tech_stack || [],
-          phase: w.phase || "Requirements",
-          confidence: w.confidence || 0,
-          messages: [],
-          prompts: [],
-          defaultModel: "llama-3.3-70b",
-        }));
-        set({ workspaces: mapped, activeWorkspaceId: mapped[0].id });
-      }
+      const mapped: Workspace[] = (data || []).map((w: any) => ({
+        id: w.id,
+        name: w.name,
+        activity: "active",
+        techStack: w.tech_stack || [],
+        phase: w.phase || "Requirements",
+        confidence: w.confidence || 0,
+        messages: [],
+        prompts: [],
+        defaultModel: "llama-3.3-70b",
+      }));
+      set({ workspaces: mapped, activeWorkspaceId: mapped[0]?.id ?? "" });
     } catch (e) {
       console.log("Backend unavailable, using mock data");
     }

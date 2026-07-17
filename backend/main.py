@@ -6,6 +6,7 @@ import os
 from contextlib import asynccontextmanager
 from uuid import UUID
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -46,6 +47,66 @@ from summarizer import maybe_summarize_conversation
 settings = get_settings()
 
 
+# ---------------------------------------------------------------------------
+# Clerk token verification
+# ---------------------------------------------------------------------------
+
+async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
+    """
+    Reads the Authorization header, verifies the Clerk session token,
+    and returns the matching User from our database.
+    Falls back to the default dev user if no token is present (for local dev only).
+    """
+    auth_header = request.headers.get("Authorization", "")
+
+    if not auth_header.startswith("Bearer "):
+        # No token — fall back to dev user (remove this later)
+        return await get_or_create_default_user(db)
+
+    token = auth_header.removeprefix("Bearer ").strip()
+
+    clerk_secret = os.environ.get("CLERK_SECRET_KEY", "")
+    if not clerk_secret:
+        # No Clerk secret configured — fall back to dev user
+        return await get_or_create_default_user(db)
+
+    # Ask Clerk to verify the token and tell us who it belongs to
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.clerk.com/v1/tokens/verify",
+                json={"token": token},
+                headers={
+                    "Authorization": f"Bearer {clerk_secret}",
+                    "Content-Type": "application/json",
+                },
+            )
+
+        if response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid session token")
+
+        data = response.json()
+        clerk_id = data.get("sub")
+        if not clerk_id:
+            raise HTTPException(status_code=401, detail="Could not identify user from token")
+
+    except httpx.RequestError:
+        raise HTTPException(status_code=503, detail="Could not reach Clerk to verify token")
+
+    # Look up the user in our database by their Clerk ID
+    result = await db.execute(select(User).where(User.clerk_id == clerk_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found. Please sign in again.")
+
+    return user
+
+
+# ---------------------------------------------------------------------------
+# App setup
+# ---------------------------------------------------------------------------
+
 async def init_db() -> None:
     async with get_engine().begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -55,7 +116,6 @@ async def seed_tool_registry(db: AsyncSession) -> None:
     result = await db.execute(select(ToolRegistry))
     if result.scalars().first():
         return
-
     for tool in TOOL_REGISTRY_SEED:
         db.add(ToolRegistry(**tool))
     await db.flush()
@@ -87,6 +147,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 
 @app.get("/health")
 async def health():
@@ -148,8 +212,11 @@ async def clerk_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/workspaces", response_model=WorkspaceResponse)
-async def create_workspace(body: WorkspaceCreate, db: AsyncSession = Depends(get_db)):
-    user = await get_or_create_default_user(db)
+async def create_workspace(
+    body: WorkspaceCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     workspace = Workspace(user_id=user.id, name=body.name)
     db.add(workspace)
     await db.flush()
@@ -164,8 +231,10 @@ async def create_workspace(body: WorkspaceCreate, db: AsyncSession = Depends(get
 
 
 @app.get("/workspaces", response_model=list[WorkspaceResponse])
-async def list_workspaces(db: AsyncSession = Depends(get_db)):
-    user = await get_or_create_default_user(db)
+async def list_workspaces(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     result = await db.execute(
         select(Workspace).where(Workspace.user_id == user.id).order_by(Workspace.updated_at.desc())
     )
@@ -173,7 +242,11 @@ async def list_workspaces(db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/workspaces/{workspace_id}/messages", response_model=list[MessageResponse])
-async def get_messages(workspace_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_messages(
+    workspace_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     workspace = await ensure_workspace(db, workspace_id)
     conversation = await ensure_conversation(db, workspace)
     result = await db.execute(
@@ -189,8 +262,8 @@ async def send_message(
     workspace_id: UUID,
     body: MessageCreate,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    user = await get_or_create_default_user(db)
     workspace = await ensure_workspace(db, workspace_id)
     conversation = await ensure_conversation(db, workspace)
     project = await ensure_project(db, workspace)
@@ -277,8 +350,8 @@ async def stream_message(
     workspace_id: UUID,
     message: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    user = await get_or_create_default_user(db)
     workspace = await ensure_workspace(db, workspace_id)
     conversation = await ensure_conversation(db, workspace)
     project = await ensure_project(db, workspace)
@@ -406,8 +479,8 @@ async def generate_prompt(
     tool_id: UUID,
     body: GeneratePromptRequest,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    user = await get_or_create_default_user(db)
     tool = await get_tool_by_id(db, tool_id)
 
     workspace_id = body.workspace_id
@@ -471,8 +544,8 @@ async def generate_prompt(
 async def list_prompts(
     workspace_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    user = await get_or_create_default_user(db)
     query = select(GeneratedPrompt).join(Workspace).where(Workspace.user_id == user.id)
 
     if workspace_id:
@@ -484,8 +557,11 @@ async def list_prompts(
 
 
 @app.post("/settings/api-keys", response_model=ApiKeyProviderResponse)
-async def save_api_key(body: ApiKeyCreate, db: AsyncSession = Depends(get_db)):
-    user = await get_or_create_default_user(db)
+async def save_api_key(
+    body: ApiKeyCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     provider = body.provider.strip()
     if provider not in {"OpenAI", "Anthropic", "Google", "OpenRouter", "Groq"}:
         raise HTTPException(status_code=400, detail="Unsupported provider.")
@@ -499,7 +575,6 @@ async def save_api_key(body: ApiKeyCreate, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     from encryption import mask_api_key
-
     return ApiKeyProviderResponse(
         provider=provider,
         masked_key=mask_api_key(body.api_key.strip()),
@@ -508,8 +583,10 @@ async def save_api_key(body: ApiKeyCreate, db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/settings/api-keys", response_model=list[ApiKeyProviderResponse])
-async def get_api_keys(db: AsyncSession = Depends(get_db)):
-    user = await get_or_create_default_user(db)
+async def get_api_keys(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     items = await list_api_key_providers(db, user.id)
     return [ApiKeyProviderResponse(**item) for item in items]
 
