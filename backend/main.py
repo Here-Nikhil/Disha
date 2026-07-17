@@ -55,18 +55,14 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
     auth_header = request.headers.get("Authorization", "")
 
     if not auth_header.startswith("Bearer "):
-        print("DEBUG: No Bearer token found, falling back to dev user")
         return await get_or_create_default_user(db)
 
     token = auth_header.removeprefix("Bearer ").strip()
-    print(f"DEBUG: Token received, length={len(token)}")
 
     clerk_secret = os.environ.get("CLERK_SECRET_KEY", "")
     if not clerk_secret:
-        print("DEBUG: No CLERK_SECRET_KEY found, falling back to dev user")
         return await get_or_create_default_user(db)
 
-    # Fetch Clerk's public keys (JWKS)
     try:
         async with httpx.AsyncClient() as client:
             jwks_response = await client.get(
@@ -74,22 +70,17 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
                 headers={"Authorization": f"Bearer {clerk_secret}"},
             )
         if jwks_response.status_code != 200:
-            print(f"DEBUG: Failed to fetch JWKS, status={jwks_response.status_code}")
             raise HTTPException(status_code=503, detail="Could not fetch Clerk public keys")
 
         jwks_data = jwks_response.json()
-        print(f"DEBUG: JWKS fetched, keys={len(jwks_data.get('keys', []))}")
 
-    except httpx.RequestError as e:
-        print(f"DEBUG: httpx error fetching JWKS: {e}")
+    except httpx.RequestError:
         raise HTTPException(status_code=503, detail="Could not reach Clerk")
 
-    # Decode the JWT using the public key from JWKS
     try:
         import jwt
         from jwt.algorithms import RSAAlgorithm
 
-        # Get the first key from JWKS and build the public key
         key_data = jwks_data["keys"][0]
         public_key = RSAAlgorithm.from_jwk(key_data)
 
@@ -100,21 +91,16 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
             options={"verify_aud": False},
         )
         clerk_id = decoded.get("sub")
-        print(f"DEBUG: JWT decoded successfully, clerk_id={clerk_id}")
 
-    except Exception as e:
-        print(f"DEBUG: JWT decode error: {e}")
+    except Exception:
         raise HTTPException(status_code=401, detail="Invalid session token")
 
-    # Look up the user in our database by their Clerk ID
     result = await db.execute(select(User).where(User.clerk_id == clerk_id))
     user = result.scalar_one_or_none()
 
     if not user:
-        print(f"DEBUG: No user found for clerk_id={clerk_id}")
         raise HTTPException(status_code=404, detail="User not found. Please sign in again.")
 
-    print(f"DEBUG: User found: {user.email}")
     return user
 
 
