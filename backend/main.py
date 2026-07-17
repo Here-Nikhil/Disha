@@ -66,7 +66,7 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
         print("DEBUG: No CLERK_SECRET_KEY found, falling back to dev user")
         return await get_or_create_default_user(db)
 
-    # Fetch Clerk's public keys (JWKS) to verify the JWT
+    # Fetch Clerk's public keys (JWKS)
     try:
         async with httpx.AsyncClient() as client:
             jwks_response = await client.get(
@@ -77,27 +77,25 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
             print(f"DEBUG: Failed to fetch JWKS, status={jwks_response.status_code}")
             raise HTTPException(status_code=503, detail="Could not fetch Clerk public keys")
 
-        jwks = jwks_response.json()
-        print(f"DEBUG: JWKS fetched successfully, keys={len(jwks.get('keys', []))}")
+        jwks_data = jwks_response.json()
+        print(f"DEBUG: JWKS fetched, keys={len(jwks_data.get('keys', []))}")
 
     except httpx.RequestError as e:
         print(f"DEBUG: httpx error fetching JWKS: {e}")
         raise HTTPException(status_code=503, detail="Could not reach Clerk")
 
-    # Decode and verify the JWT using the public keys
+    # Decode the JWT using the public key from JWKS
     try:
         import jwt
-        from jwt import PyJWKClient
+        from jwt.algorithms import RSAAlgorithm
 
-        jwks_url = "https://api.clerk.com/v1/jwks"
-        jwks_client = PyJWKClient(
-            jwks_url,
-            headers={"Authorization": f"Bearer {clerk_secret}"},
-        )
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        # Get the first key from JWKS and build the public key
+        key_data = jwks_data["keys"][0]
+        public_key = RSAAlgorithm.from_jwk(key_data)
+
         decoded = jwt.decode(
             token,
-            signing_key.key,
+            public_key,
             algorithms=["RS256"],
             options={"verify_aud": False},
         )
