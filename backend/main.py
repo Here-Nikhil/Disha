@@ -52,25 +52,22 @@ settings = get_settings()
 # ---------------------------------------------------------------------------
 
 async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
-    """
-    Reads the Authorization header, verifies the Clerk session token,
-    and returns the matching User from our database.
-    Falls back to the default dev user if no token is present (for local dev only).
-    """
     auth_header = request.headers.get("Authorization", "")
 
     if not auth_header.startswith("Bearer "):
-        # No token — fall back to dev user (remove this later)
+        print("DEBUG: No Bearer token found, falling back to dev user")
         return await get_or_create_default_user(db)
 
     token = auth_header.removeprefix("Bearer ").strip()
+    print(f"DEBUG: Token received, length={len(token)}, prefix={token[:20]}")
 
     clerk_secret = os.environ.get("CLERK_SECRET_KEY", "")
     if not clerk_secret:
-        # No Clerk secret configured — fall back to dev user
+        print("DEBUG: No CLERK_SECRET_KEY found, falling back to dev user")
         return await get_or_create_default_user(db)
 
-    # Ask Clerk to verify the token and tell us who it belongs to
+    print(f"DEBUG: CLERK_SECRET_KEY found, prefix={clerk_secret[:10]}")
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -82,6 +79,8 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
                 },
             )
 
+        print(f"DEBUG: Clerk response status={response.status_code}, body={response.text[:200]}")
+
         if response.status_code != 200:
             raise HTTPException(status_code=401, detail="Invalid session token")
 
@@ -90,10 +89,10 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
         if not clerk_id:
             raise HTTPException(status_code=401, detail="Could not identify user from token")
 
-    except httpx.RequestError:
+    except httpx.RequestError as e:
+        print(f"DEBUG: httpx request error: {e}")
         raise HTTPException(status_code=503, detail="Could not reach Clerk to verify token")
 
-    # Look up the user in our database by their Clerk ID
     result = await db.execute(select(User).where(User.clerk_id == clerk_id))
     user = result.scalar_one_or_none()
 
