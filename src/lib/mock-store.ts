@@ -337,19 +337,42 @@ export const useStore = create<State>((set, get) => ({
     api.sendMessage(workspaceId, text)
       .then((reply: any) => {
         const msg = reply.assistant_message || reply;
+        const toolsArr: ToolRec[] | undefined = Array.isArray(msg.tools) && msg.tools.length > 0
+          ? msg.tools
+          : msg.tool
+          ? [msg.tool]
+          : undefined;
         const dishaMsg: ChatMessage = {
           id: uid(),
           author: "disha",
-          kind: msg.consensus ? "consensus" : msg.tool ? "tool" : "text",
+          kind: msg.consensus ? "consensus" : toolsArr ? "tool" : "text",
           content: msg.content || "Here's my recommendation.",
-          tool: msg.tool,
+          tool: toolsArr?.[0],
+          tools: toolsArr,
           consensus: msg.consensus,
           createdAt: Date.now(),
         };
+        const wsPatch = reply.workspace
+          ? {
+              techStack: reply.workspace.tech_stack ?? undefined,
+              phase: reply.workspace.phase ?? undefined,
+              confidence:
+                typeof reply.workspace.confidence === "number"
+                  ? reply.workspace.confidence
+                  : undefined,
+            }
+          : {};
         set((s) => ({
           workspaces: s.workspaces.map((w) =>
             w.id === workspaceId
-              ? { ...w, messages: [...w.messages, dishaMsg], confidence: Math.min(100, w.confidence + 6) }
+              ? {
+                  ...w,
+                  messages: [...w.messages, dishaMsg],
+                  techStack: wsPatch.techStack ?? w.techStack,
+                  phase: wsPatch.phase ?? w.phase,
+                  confidence:
+                    wsPatch.confidence ?? Math.min(100, w.confidence + 6),
+                }
               : w,
           ),
         }));
