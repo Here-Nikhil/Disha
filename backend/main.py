@@ -59,46 +59,64 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
         return await get_or_create_default_user(db)
 
     token = auth_header.removeprefix("Bearer ").strip()
-    print(f"DEBUG: Token received, length={len(token)}, prefix={token[:20]}")
+    print(f"DEBUG: Token received, length={len(token)}")
 
     clerk_secret = os.environ.get("CLERK_SECRET_KEY", "")
     if not clerk_secret:
         print("DEBUG: No CLERK_SECRET_KEY found, falling back to dev user")
         return await get_or_create_default_user(db)
 
-    print(f"DEBUG: CLERK_SECRET_KEY found, prefix={clerk_secret[:10]}")
-
+    # Fetch Clerk's public keys (JWKS) to verify the JWT
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.clerk.com/v1/tokens/verify",
-                json={"token": token},
-                headers={
-                    "Authorization": f"Bearer {clerk_secret}",
-                    "Content-Type": "application/json",
-                },
+            jwks_response = await client.get(
+                "https://api.clerk.com/v1/jwks",
+                headers={"Authorization": f"Bearer {clerk_secret}"},
             )
+        if jwks_response.status_code != 200:
+            print(f"DEBUG: Failed to fetch JWKS, status={jwks_response.status_code}")
+            raise HTTPException(status_code=503, detail="Could not fetch Clerk public keys")
 
-        print(f"DEBUG: Clerk response status={response.status_code}, body={response.text[:200]}")
-
-        if response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid session token")
-
-        data = response.json()
-        clerk_id = data.get("sub")
-        if not clerk_id:
-            raise HTTPException(status_code=401, detail="Could not identify user from token")
+        jwks = jwks_response.json()
+        print(f"DEBUG: JWKS fetched successfully, keys={len(jwks.get('keys', []))}")
 
     except httpx.RequestError as e:
-        print(f"DEBUG: httpx request error: {e}")
-        raise HTTPException(status_code=503, detail="Could not reach Clerk to verify token")
+        print(f"DEBUG: httpx error fetching JWKS: {e}")
+        raise HTTPException(status_code=503, detail="Could not reach Clerk")
 
+    # Decode and verify the JWT using the public keys
+    try:
+        import jwt
+        from jwt import PyJWKClient
+
+        jwks_url = "https://api.clerk.com/v1/jwks"
+        jwks_client = PyJWKClient(
+            jwks_url,
+            headers={"Authorization": f"Bearer {clerk_secret}"},
+        )
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        decoded = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            options={"verify_aud": False},
+        )
+        clerk_id = decoded.get("sub")
+        print(f"DEBUG: JWT decoded successfully, clerk_id={clerk_id}")
+
+    except Exception as e:
+        print(f"DEBUG: JWT decode error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid session token")
+
+    # Look up the user in our database by their Clerk ID
     result = await db.execute(select(User).where(User.clerk_id == clerk_id))
     user = result.scalar_one_or_none()
 
     if not user:
+        print(f"DEBUG: No user found for clerk_id={clerk_id}")
         raise HTTPException(status_code=404, detail="User not found. Please sign in again.")
 
+    print(f"DEBUG: User found: {user.email}")
     return user
 
 
