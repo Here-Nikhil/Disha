@@ -24,17 +24,20 @@ export type Phase =
 
 export type MessageKind = "text" | "tool" | "consensus";
 
+export type ToolRec = {
+  name: string;
+  description: string;
+  paid: boolean;
+  category: ToolCategory;
+};
+
 export type ChatMessage = {
   id: string;
   author: "user" | "disha";
   kind: MessageKind;
   content: string;
-  tool?: {
-    name: string;
-    description: string;
-    paid: boolean;
-    category: ToolCategory;
-  };
+  tool?: ToolRec;
+  tools?: ToolRec[];
   consensus?: {
     options: { model: string; recommendation: string }[];
     finalIndex: number;
@@ -166,10 +169,10 @@ function seedWorkspaceA(): Workspace {
       }, createdAt: now - 490000 },
     ],
     prompts: [
-      { id: uid(), title: "Supabase multi-tenant schema", platform: "Claude Code", body: "Design a Supabase schema...", createdAt: now - 400000 },
-      { id: uid(), title: "TanStack Start + CF Workers deploy", platform: "Cursor", body: "Configure a TanStack Start app...", createdAt: now - 300000 },
-      { id: uid(), title: "Analytics dashboard shell UI", platform: "Lovable", body: "Build a responsive analytics dashboard...", createdAt: now - 200000 },
-      { id: uid(), title: "Time-series ingestion worker", platform: "Bolt", body: "Scaffold a Cloudflare Worker...", createdAt: now - 100000 },
+      { id: uid(), title: "Supabase multi-tenant schema", platform: "Claude Code", body: "Design a Supabase Postgres schema for a multi-tenant SaaS analytics app.\n\nRequirements:\n- organizations, memberships (user_id, org_id, role), projects, events (time-series)\n- Row Level Security so each user only sees rows for orgs they belong to\n- helper SQL function current_org_ids() used by RLS policies\n- indexes for (org_id, created_at desc) on events\n\nDeliverables:\n1. Full SQL migration (create tables + policies + indexes)\n2. Explanation of the RLS model in 5 bullet points\n3. Example queries showing how a normal user vs. an org admin sees data", createdAt: now - 400000 },
+      { id: uid(), title: "TanStack Start + CF Workers deploy", platform: "Cursor", body: "Configure a TanStack Start app for deployment to Cloudflare Workers.\n\nSteps:\n1. Update vite.config.ts to target the workerd runtime\n2. Add wrangler.toml with the correct compatibility_date and nodejs_compat flag\n3. Wire environment variables (DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY) as Worker secrets\n4. Add a GitHub Actions workflow that runs typecheck + deploys to a preview environment on PRs and production on main\n\nOutput: file diffs + commands to run locally.", createdAt: now - 300000 },
+      { id: uid(), title: "Analytics dashboard shell UI", platform: "Lovable", body: "Build a responsive analytics dashboard shell using React + Tailwind + shadcn/ui.\n\nLayout:\n- Left sidebar (org switcher, nav)\n- Top bar (date range picker, search, user menu)\n- Main grid: 4 KPI cards on top, 2 large charts below (line + bar), 1 recent-events table at the bottom\n\nUse recharts for charts, TanStack Table for the table, and mock data that follows this shape:\n{ metric: string; value: number; delta: number; series: { t: string; v: number }[] }", createdAt: now - 200000 },
+      { id: uid(), title: "Time-series ingestion worker", platform: "Bolt", body: "Scaffold a Cloudflare Worker that ingests analytics events over HTTPS and writes them to Postgres via a connection pooler.\n\nRequirements:\n- POST /ingest accepts { org_id, event, properties, ts } (validate with zod)\n- Batch inserts every 200 events or 500ms, whichever comes first\n- Uses HMAC signature verification on the Authorization header\n- Emits structured logs and a /health endpoint\n\nInclude tests with Miniflare and a README explaining local dev + deploy.", createdAt: now - 100000 },
     ],
   };
 }
@@ -334,19 +337,42 @@ export const useStore = create<State>((set, get) => ({
     api.sendMessage(workspaceId, text)
       .then((reply: any) => {
         const msg = reply.assistant_message || reply;
+        const toolsArr: ToolRec[] | undefined = Array.isArray(msg.tools) && msg.tools.length > 0
+          ? msg.tools
+          : msg.tool
+          ? [msg.tool]
+          : undefined;
         const dishaMsg: ChatMessage = {
           id: uid(),
           author: "disha",
-          kind: msg.consensus ? "consensus" : msg.tool ? "tool" : "text",
+          kind: msg.consensus ? "consensus" : toolsArr ? "tool" : "text",
           content: msg.content || "Here's my recommendation.",
-          tool: msg.tool,
+          tool: toolsArr?.[0],
+          tools: toolsArr,
           consensus: msg.consensus,
           createdAt: Date.now(),
         };
+        const wsPatch = reply.workspace
+          ? {
+              techStack: reply.workspace.tech_stack ?? undefined,
+              phase: reply.workspace.phase ?? undefined,
+              confidence:
+                typeof reply.workspace.confidence === "number"
+                  ? reply.workspace.confidence
+                  : undefined,
+            }
+          : {};
         set((s) => ({
           workspaces: s.workspaces.map((w) =>
             w.id === workspaceId
-              ? { ...w, messages: [...w.messages, dishaMsg], confidence: Math.min(100, w.confidence + 6) }
+              ? {
+                  ...w,
+                  messages: [...w.messages, dishaMsg],
+                  techStack: wsPatch.techStack ?? w.techStack,
+                  phase: wsPatch.phase ?? w.phase,
+                  confidence:
+                    wsPatch.confidence ?? Math.min(100, w.confidence + 6),
+                }
               : w,
           ),
         }));
