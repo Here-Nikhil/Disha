@@ -21,12 +21,18 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
   useEffect(() => {
     if (isLoaded && isSignedIn && !initialized.current) {
       initialized.current = true;
-      getToken().then((token) => {
+
+      const refreshToken = async () => {
+        const token = await getToken();
         if (token) {
           setAuthToken(token);
-          loadWorkspaces();
         }
-      });
+      };
+
+      refreshToken().then(() => loadWorkspaces());
+
+      const interval = setInterval(refreshToken, 50000);
+      return () => clearInterval(interval);
     }
   }, [isLoaded, isSignedIn, getToken, loadWorkspaces]);
 

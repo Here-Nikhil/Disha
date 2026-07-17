@@ -40,9 +40,14 @@ function WorkspaceRoute() {
   const renameWorkspace = useStore((s) => s.renameWorkspace);
   const navigate = useNavigate();
 
+  const loadMessages = useStore((s) => s.loadMessages);
+
   useEffect(() => {
-    if (workspace) setActive(workspace.id);
-  }, [workspace, setActive]);
+    if (workspace) {
+      setActive(workspace.id);
+      loadMessages(workspace.id);
+    }
+  }, [workspace?.id]);
 
   if (!workspace) {
     return (

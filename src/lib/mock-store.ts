@@ -118,6 +118,7 @@ type State = {
   activateUser: (id: string) => void;
   deleteUser: (id: string) => void;
   updateUserName: (name: string) => void;
+  loadMessages: (workspaceId: string) => Promise<void>;
   loadWorkspaces: () => Promise<void>;
 };
 
@@ -167,6 +168,35 @@ export const useStore = create<State>((set, get) => ({
   suspendUser: (id) => set((s) => ({ adminUsers: s.adminUsers.map((u) => (u.id === id ? { ...u, status: "suspended" } : u)) })),
   activateUser: (id) => set((s) => ({ adminUsers: s.adminUsers.map((u) => (u.id === id ? { ...u, status: "active" } : u)) })),
   deleteUser: (id) => set((s) => ({ adminUsers: s.adminUsers.filter((u) => u.id !== id) })),
+
+  loadMessages: async (workspaceId: string) => {
+    try {
+      const data = await api.getMessages(workspaceId);
+      const messages = (data || []).map((m: any) => ({
+        id: m.id,
+        author: m.author as "user" | "disha",
+        kind: m.kind as MessageKind,
+        content: m.content,
+        tool: m.tool ?? undefined,
+        tools: m.tools ?? undefined,
+        consensus: m.consensus
+          ? {
+              options: m.consensus.options,
+              finalIndex: m.consensus.final_index,
+              summary: m.consensus.summary,
+            }
+          : undefined,
+        createdAt: new Date(m.created_at).getTime(),
+      }));
+      set((s) => ({
+        workspaces: s.workspaces.map((w) =>
+          w.id === workspaceId ? { ...w, messages } : w,
+        ),
+      }));
+    } catch (e) {
+      console.error("Failed to load messages", e);
+    }
+  },
 
   loadWorkspaces: async () => {
     try {
