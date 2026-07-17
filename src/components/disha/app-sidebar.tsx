@@ -194,7 +194,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppSidebar() {
   return (
-    <aside className="hidden h-screen w-[260px] shrink-0 border-r border-border md:block">
+    <aside className="sticky top-0 hidden h-screen w-[260px] shrink-0 self-start overflow-y-auto border-r border-border md:block">
       <SidebarInner />
     </aside>
   );
