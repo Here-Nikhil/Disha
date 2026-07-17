@@ -71,8 +71,16 @@ export function ChatBubble({ message, onGeneratePrompt }: { message: ChatMessage
         <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-widest text-disha">Disha</div>
         <p className="text-sm leading-relaxed text-foreground/90">{message.content}</p>
 
-        {message.kind === "tool" && message.tool && (
-          <ToolRecommendationCard tool={message.tool} onGenerate={() => onGeneratePrompt?.(message.tool!.name)} />
+        {message.kind === "tool" && (message.tools?.length || message.tool) && (
+          <div className="mt-4 space-y-3">
+            {(message.tools ?? (message.tool ? [message.tool] : [])).map((t, i) => (
+              <ToolRecommendationCard
+                key={`${t.name}-${i}`}
+                tool={t}
+                onGenerate={() => onGeneratePrompt?.(t.name)}
+              />
+            ))}
+          </div>
         )}
 
         {message.kind === "consensus" && message.consensus && (
