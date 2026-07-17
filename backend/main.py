@@ -35,7 +35,6 @@ from services import (
     ensure_conversation,
     ensure_project,
     ensure_workspace,
-    get_or_create_default_user,
     get_tool_by_id,
     get_user_api_keys,
     list_api_key_providers,
@@ -55,13 +54,13 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
     auth_header = request.headers.get("Authorization", "")
 
     if not auth_header.startswith("Bearer "):
-        return await get_or_create_default_user(db)
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
     token = auth_header.removeprefix("Bearer ").strip()
 
     clerk_secret = os.environ.get("CLERK_SECRET_KEY", "")
     if not clerk_secret:
-        return await get_or_create_default_user(db)
+        raise HTTPException(status_code=503, detail="Auth not configured")
 
     try:
         async with httpx.AsyncClient() as client:
@@ -127,7 +126,6 @@ async def lifespan(app: FastAPI):
     await init_db()
     async with get_session_factory()() as session:
         await seed_tool_registry(session)
-        await get_or_create_default_user(session)
         await session.commit()
     yield
     await dispose_engine()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from consensus import run_consensus
 from providers import AIProviderClient, parse_structured_json
@@ -47,6 +48,9 @@ ARCHITECTURE_KEYWORDS = [
     "infra",
 ]
 
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "system_prompt.txt"
+DISHA_SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
+
 
 def _matches_any(text: str, patterns: list[str]) -> bool:
     lowered = text.lower().strip()
@@ -64,19 +68,6 @@ def _provider_for_model(model: str) -> str:
     if "llama" in model_lower or "mixtral" in model_lower:
         return "groq"
     return "groq"
-
-
-DISHA_SYSTEM_PROMPT = """You are Disha, an AI architecture planning assistant.
-Help users plan software projects: gather requirements, recommend architecture,
-suggest tech stacks and AI dev tools, and prepare optimized prompts for coding agents.
-
-Respond in clear, actionable prose. When recommending a specific tool from the ecosystem
-(Cursor, Supabase, Vercel, Neon, etc.), mention why it fits the project.
-If the user is still in early requirements, ask 1-2 focused follow-up questions.
-
-When appropriate, end with a JSON block on its own line:
-{"phase":"Requirements|Architecture|Tool Selection|Prompt Generation","tech_stack":["..."],"tool_recommendation":{"name":"...","description":"...","category":"IDE|Deployment|Database|Frontend|Backend","paid":false}}
-Only include fields you can infer confidently."""
 
 
 def classify_message(text: str) -> str:
@@ -174,7 +165,6 @@ async def orchestrate_message(
     try:
         response = await client.complete(provider, DISHA_SYSTEM_PROMPT, user_prompt, default_model)
     except Exception as exc:
-        # Try fallback to next available provider
         fallback_providers = [p for p in available if p != provider]
         if fallback_providers:
             try:
@@ -198,14 +188,24 @@ async def orchestrate_message(
     tech_stack = None
 
     if structured:
-        if structured.get("tool_recommendation"):
-            tr = structured["tool_recommendation"]
-            tool_data = {
-                "name": tr.get("name", ""),
-                "description": tr.get("description", ""),
-                "paid": bool(tr.get("paid", False)),
-                "category": tr.get("category", "Backend"),
-            }
+        recommendations = structured.get("tool_recommendations", [])
+        # handle old single tool_recommendation format too
+        if not recommendations and structured.get("tool_recommendation"):
+            recommendations = [structured["tool_recommendation"]]
+
+        if recommendations:
+            tool_data = [
+                {
+                    "name": tr.get("name", ""),
+                    "description": tr.get("description", ""),
+                    "paid": bool(tr.get("paid", False)),
+                    "category": tr.get("category", "Backend"),
+                    "best_for": tr.get("best_for", ""),
+                    "pros": tr.get("pros", []),
+                    "cons": tr.get("cons", []),
+                }
+                for tr in recommendations
+            ]
         phase = structured.get("phase")
         tech_stack = structured.get("tech_stack")
 
@@ -213,10 +213,10 @@ async def orchestrate_message(
     if structured:
         content = re.sub(r"\{.*\}\s*$", "", content, flags=re.DOTALL).strip()
 
-    if tool_data and tool_data.get("name"):
+    if tool_data and len(tool_data) > 0:
         return OrchestratorResult(
             kind="tool",
-            content=content or f"Recommended tool: {tool_data['name']}",
+            content=content or f"Recommended: {tool_data[0]['name']}",
             tool_data=tool_data,
             phase=phase,
             tech_stack=tech_stack,
