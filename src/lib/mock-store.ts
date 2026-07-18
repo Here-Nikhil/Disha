@@ -120,6 +120,7 @@ type State = {
   updateUserName: (name: string) => void;
   loadMessages: (workspaceId: string) => Promise<void>;
   loadWorkspaces: () => Promise<void>;
+  loadTools: () => Promise<void>;
 };
 
 let _uidCounter = 0;
@@ -215,6 +216,23 @@ export const useStore = create<State>((set, get) => ({
       set({ workspaces: mapped, activeWorkspaceId: mapped[0]?.id ?? "" });
     } catch (e) {
       console.error("Failed to load workspaces", e);
+    }
+  },
+  loadTools: async () => {
+    try {
+      const data = await api.getTools();
+      const mapped: Tool[] = (data || []).map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        category: t.category as ToolCategory,
+        description: t.description,
+        paid: t.paid,
+        url: t.url || "#",
+        pending: false,
+      }));
+      set({ tools: mapped });
+    } catch (e) {
+      console.error("Failed to load tools", e);
     }
   },
 

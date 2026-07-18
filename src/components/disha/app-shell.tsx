@@ -10,6 +10,7 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const navigate = useNavigate();
   const loadWorkspaces = useStore((s) => s.loadWorkspaces);
+  const loadTools = useStore((s) => s.loadTools);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -29,12 +30,15 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
         }
       };
 
-      refreshToken().then(() => loadWorkspaces());
+      refreshToken().then(() => {
+        loadWorkspaces();
+        loadTools();
+      });
 
       const interval = setInterval(refreshToken, 50000);
       return () => clearInterval(interval);
     }
-  }, [isLoaded, isSignedIn, getToken, loadWorkspaces]);
+  }, [isLoaded, isSignedIn, getToken, loadWorkspaces, loadTools]);
 
   if (!isLoaded || !isSignedIn) {
     return (

@@ -3,6 +3,7 @@ import type { ChatMessage, Tool, ToolCategory } from "@/lib/mock-store";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink, Sparkles } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 const categoryColor: Record<ToolCategory, string> = {
   IDE: "bg-violet-500/12 text-violet-300 border-violet-500/25",
@@ -69,7 +70,9 @@ export function ChatBubble({ message, onGeneratePrompt }: { message: ChatMessage
       </div>
       <div className="min-w-0 flex-1 border-l-2 border-disha/70 pl-4">
         <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-widest text-disha">Disha</div>
-        <p className="text-sm leading-relaxed text-foreground/90">{message.content}</p>
+        <div className="prose prose-sm prose-invert max-w-none text-foreground/90 [&>ul]:mt-1 [&>ul]:space-y-1 [&>ol]:mt-1 [&>ol]:space-y-1 [&>p]:leading-relaxed [&>p]:mb-2 [&>h1]:text-base [&>h2]:text-sm [&>h3]:text-sm [&>strong]:text-foreground">
+          <ReactMarkdown>{message.content}</ReactMarkdown>
+        </div>
 
         {message.kind === "tool" && (message.tools?.length || message.tool) && (
           <div className="mt-4 space-y-3">
@@ -77,7 +80,6 @@ export function ChatBubble({ message, onGeneratePrompt }: { message: ChatMessage
               <ToolRecommendationCard
                 key={`${t.name}-${i}`}
                 tool={t}
-                onGenerate={() => onGeneratePrompt?.(t.name)}
               />
             ))}
           </div>
@@ -93,10 +95,8 @@ export function ChatBubble({ message, onGeneratePrompt }: { message: ChatMessage
 
 export function ToolRecommendationCard({
   tool,
-  onGenerate,
 }: {
   tool: { name: string; description: string; paid: boolean; category: ToolCategory };
-  onGenerate?: () => void;
 }) {
   return (
     <div className="mt-4 rounded-xl border border-border bg-card p-4">
@@ -111,10 +111,11 @@ export function ToolRecommendationCard({
         </div>
       </div>
       <div className="mt-3 flex gap-2">
-        <Button size="sm" onClick={onGenerate}>View Prompt</Button>
-        <Button size="sm" variant="ghost" className="text-muted-foreground">
-          <ExternalLink className="size-3.5" />
-          Docs
+        <Button size="sm" variant="ghost" className="text-muted-foreground" asChild>
+          <a href={`https://www.google.com/search?q=${encodeURIComponent(tool.name + " docs")}`} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="size-3.5 mr-1" />
+            Docs
+          </a>
         </Button>
       </div>
     </div>

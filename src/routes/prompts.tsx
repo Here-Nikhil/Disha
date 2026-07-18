@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/disha/app-shell";
-import { useStore, type Platform, type Prompt } from "@/lib/mock-store";
+import { useStore, type Platform } from "@/lib/mock-store";
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -18,6 +19,14 @@ export const Route = createFileRoute("/prompts")({
   component: PromptsPage,
 });
 
+type PromptResponse = {
+  id: string;
+  title: string;
+  platform: Platform;
+  body: string;
+  created_at: string;
+};
+
 const platforms: (Platform | "All")[] = ["All", "Claude Code", "Cursor", "Lovable", "Replit", "Windsurf", "Bolt"];
 
 const platformColor: Record<Platform, string> = {
@@ -32,20 +41,37 @@ const platformColor: Record<Platform, string> = {
 function PromptsPage() {
   const activeWs = useStore((s) => s.workspaces.find((w) => w.id === s.activeWorkspaceId));
   const [platform, setPlatform] = useState<(typeof platforms)[number]>("All");
-  const [viewing, setViewing] = useState<Prompt | null>(null);
+  const [viewing, setViewing] = useState<PromptResponse | null>(null);
+  const [prompts, setPrompts] = useState<PromptResponse[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const prompts = activeWs?.prompts ?? [];
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getPrompts(activeWs?.id);
+        setPrompts(data);
+      } catch (err) {
+        toast.error("Could not load prompts");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPrompts();
+  }, [activeWs?.id]);
+
   const filtered = useMemo(() => {
     if (platform === "All") return prompts;
     return prompts.filter((p) => p.platform === platform);
   }, [prompts, platform]);
 
-  const handleCopy = (p: Prompt) => {
+  const handleCopy = (p: PromptResponse) => {
     navigator.clipboard?.writeText(p.body);
     toast.success("Prompt copied to clipboard");
   };
 
-  const handleDownload = (p: Prompt) => {
+  const handleDownload = (p: PromptResponse) => {
     const blob = new Blob([p.body], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -65,7 +91,7 @@ function PromptsPage() {
           <div>
             <h2 className="font-display text-3xl font-bold tracking-tight">Prompt library</h2>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              {activeWs ? <>All prompts generated for <span className="text-foreground">{activeWs.name}</span></> : "Select a workspace to view prompts"}
+              {activeWs ? <>All prompts generated for <span className="text-foreground">{activeWs.name}</span></> : "Showing all prompts across workspaces"}
             </p>
           </div>
           <div className="w-full sm:w-56">
@@ -80,7 +106,11 @@ function PromptsPage() {
           </div>
         </div>
 
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="rounded-xl border border-dashed border-border p-12 text-center">
+            <p className="text-sm text-muted-foreground">Loading prompts…</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border p-12 text-center">
             <BookText className="mx-auto size-8 text-muted-foreground" />
             <p className="mt-3 text-sm text-muted-foreground">No prompts yet. Generate one from the Tool Registry or chat with Disha.</p>
@@ -98,7 +128,7 @@ function PromptsPage() {
                       </span>
                     </div>
                     <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                      {new Date(p.createdAt).toLocaleDateString()} · {p.body.slice(0, 80)}…
+                      {new Date(p.created_at).toLocaleDateString()} · {p.body.slice(0, 80)}…
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-1">
@@ -123,7 +153,7 @@ function PromptsPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{viewing?.title}</DialogTitle>
-            <DialogDescription>{viewing?.platform} · {viewing && new Date(viewing.createdAt).toLocaleString()}</DialogDescription>
+            <DialogDescription>{viewing?.platform} · {viewing && new Date(viewing.created_at).toLocaleString()}</DialogDescription>
           </DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-4 font-mono text-xs leading-relaxed">
             {viewing?.body}

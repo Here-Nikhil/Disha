@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/disha/app-shell";
 import { useStore, type ToolCategory } from "@/lib/mock-store";
 import { ToolCard } from "@/components/disha/chat-pieces";
+import { api } from "@/lib/api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -26,10 +27,10 @@ function ToolsPage() {
   const tools = useStore((s) => s.tools);
   const user = useStore((s) => s.user);
   const activeWs = useStore((s) => s.workspaces.find((w) => w.id === s.activeWorkspaceId));
-  const addPrompt = useStore((s) => s.addPrompt);
 
   const [category, setCategory] = useState<(typeof categories)[number]>("All");
   const [q, setQ] = useState("");
+  const [generating, setGenerating] = useState<string | null>(null);
 
   const approved = useMemo(() => tools.filter((t) => !t.pending), [tools]);
   const pending = useMemo(() => tools.filter((t) => t.pending), [tools]);
@@ -42,17 +43,20 @@ function ToolsPage() {
     });
   }, [approved, category, q]);
 
-  const handleGenerate = (toolName: string) => {
+  const handleGenerate = async (toolId: string, toolName: string) => {
     if (!activeWs) {
       toast.error("Select a workspace first");
       return;
     }
-    addPrompt(activeWs.id, {
-      title: `${toolName} setup prompt`,
-      platform: "Cursor",
-      body: `Integrate ${toolName} into the current project. Read package.json and detect the framework, then generate the minimal setup: install commands, config files, environment variables, and a sanity-check example.`,
-    });
-    toast.success(`Prompt generated in ${activeWs.name}`);
+    setGenerating(toolId);
+    try {
+      await api.generatePrompt(toolId, activeWs.id, "Cursor");
+      toast.success(`Prompt generated — view it in Prompt Library`);
+    } catch (err) {
+      toast.error("Failed to generate prompt");
+    } finally {
+      setGenerating(null);
+    }
   };
 
   return (
@@ -106,7 +110,12 @@ function ToolsPage() {
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((t) => (
-                <ToolCard key={t.id} tool={t} onGenerate={() => handleGenerate(t.name)} />
+                <ToolCard
+                  key={t.id}
+                  tool={t}
+                  onGenerate={() => handleGenerate(t.id, t.name)}
+                  generating={generating === t.id}
+                />
               ))}
             </div>
             {filtered.length === 0 && (

@@ -211,7 +211,9 @@ async def orchestrate_message(
 
     content = response.content
     if structured:
-        content = re.sub(r"\{.*\}\s*$", "", content, flags=re.DOTALL).strip()
+        content = re.sub(r"\{[\s\S]*\}\s*$", "", content).strip()
+        # Also strip any remaining JSON-like blocks
+        content = re.sub(r"\{\"phase\"[\s\S]*$", "", content).strip()
 
     if tool_data and len(tool_data) > 0:
         return OrchestratorResult(
