@@ -220,7 +220,6 @@ async def orchestrate_message(
             confidence_delta=0,
         )
 
-    # If user is explicitly requesting a prompt, force generate it directly
     if _is_prompt_request(text):
         generated_prompt = await _force_generate_prompt(text, context, client, available)
         if generated_prompt:
@@ -275,7 +274,9 @@ async def orchestrate_message(
                 confidence_delta=0,
             )
 
-    structured = parse_structured_json(response.content)
+    # parse_structured_json now returns (data, cleaned_text) — JSON is removed from content
+    structured, content = parse_structured_json(response.content)
+
     tool_data = None
     phase = None
     tech_stack = None
@@ -310,13 +311,6 @@ async def orchestrate_message(
                 platform=gp["platform"],
                 body=gp["body"],
             )
-
-    content = response.content
-    if structured:
-        content = re.sub(r"\{[\s\S]*?\}\s*$", "", content).strip()
-        content = re.sub(r"\{\"phase\"[\s\S]*", "", content).strip()
-        content = re.sub(r"\{\"tool_recommendations\"[\s\S]*", "", content).strip()
-        content = re.sub(r"\{\"tech_stack\"[\s\S]*", "", content).strip()
 
     if not generated_prompt and any(kw in text.lower() for kw in PROMPT_KEYWORDS):
         platform = _detect_platform(text)

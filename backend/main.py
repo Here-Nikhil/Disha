@@ -42,6 +42,21 @@ from services import (
     save_api_key_for_user,
 )
 from summarizer import maybe_summarize_conversation
+_jwks_cache: dict | None = None
+
+async def get_jwks(clerk_secret: str) -> dict:
+    global _jwks_cache
+    if _jwks_cache is not None:
+        return _jwks_cache
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://api.clerk.com/v1/jwks",
+            headers={"Authorization": f"Bearer {clerk_secret}"},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=503, detail="Could not fetch Clerk public keys")
+    _jwks_cache = resp.json()
+    return _jwks_cache
 
 settings = get_settings()
 
@@ -53,23 +68,17 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     token = auth_header.removeprefix("Bearer ").strip()
+    print(f"TOKEN LENGTH: {len(token)}, STARTS WITH: {token[:10]}")
 
     clerk_secret = os.environ.get("CLERK_SECRET_KEY", "")
     if not clerk_secret:
         raise HTTPException(status_code=503, detail="Auth not configured")
 
     try:
-        async with httpx.AsyncClient() as client:
-            jwks_response = await client.get(
-                "https://api.clerk.com/v1/jwks",
-                headers={"Authorization": f"Bearer {clerk_secret}"},
-            )
-        if jwks_response.status_code != 200:
-            raise HTTPException(status_code=503, detail="Could not fetch Clerk public keys")
-
-        jwks_data = jwks_response.json()
-
-    except httpx.RequestError:
+        jwks_data = await get_jwks(clerk_secret)
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(status_code=503, detail="Could not reach Clerk")
 
     try:
@@ -77,7 +86,7 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
         from jwt.algorithms import RSAAlgorithm
 
         key_data = jwks_data["keys"][0]
-        public_key = RSAAlgorithm.from_jwk(key_data)
+        public_key = RSAAlgorithm.from_jwk(json.dumps(key_data))
 
         decoded = jwt.decode(
             token,
@@ -87,7 +96,8 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
         )
         clerk_id = decoded.get("sub")
 
-    except Exception:
+    except Exception as e:
+        print(f"TOKEN DECODE ERROR: {e}")
         raise HTTPException(status_code=401, detail="Invalid session token")
 
     result = await db.execute(select(User).where(User.clerk_id == clerk_id))

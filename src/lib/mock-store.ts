@@ -418,8 +418,10 @@ export const useStore = create<State>((set, get) => ({
 
   saveApiKey: (provider, value) => {
     const status: ApiKeyStatus =
-      value.length === 0 ? "unset" : value.startsWith("sk-") || value.length > 20 ? "valid" : "invalid";
+      value.length === 0 ? "unset" : value.length > 20 ? "valid" : "invalid";
     set((s) => ({ apiKeys: { ...s.apiKeys, [provider]: { value, status } } }));
+    if (value) sessionStorage.setItem(`apikey_${provider}`, value);
+    else sessionStorage.removeItem(`apikey_${provider}`);
     api.saveApiKey(provider, value).catch(() => {});
   },
 

@@ -136,7 +136,7 @@ function ChatView({
               <EmptyHero onPick={(t) => setValue(t)} />
             ) : (
               workspace.messages.map((m) => (
-                <ChatBubble key={m.id} message={m} onGeneratePrompt={onGeneratePrompt} />
+                <ChatBubble key={m.id} message={m} onGeneratePrompt={onGeneratePrompt} onSend={handleSend} />
               ))
             )}
             {thinking && <ThinkingIndicator />}
@@ -304,7 +304,8 @@ function Composer({
     }
     setTranscribing(true);
     try {
-      const text = await transcribeAudio(blob, provider, apiKeys[provider].value);
+      const rawKey = sessionStorage.getItem(`apikey_${provider}`) || apiKeys[provider].value;
+      const text = await transcribeAudio(blob, provider, rawKey);
       if (text) onChange(value ? `${value} ${text}` : text);
       else toast.message("No speech detected.");
     } catch {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, Tool, ToolCategory } from "@/lib/mock-store";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,104 @@ export function TechBadge({ label }: { label: string }) {
   );
 }
 
-export function ChatBubble({ message, onGeneratePrompt }: { message: ChatMessage; onGeneratePrompt?: (toolName: string) => void }) {
+function extractOptions(content: string): string[] {
+  const lines = content.split("\n");
+  const options: string[] = [];
+  for (const line of lines) {
+    if (line.match(/^\s{3,}/)) continue;
+    const match = line.match(/^[\s]*[-*•]\s+(.+)/) || line.match(/^[\s]*\d+\.\s+(.+)/);
+    if (match) {
+      let text = match[1].replace(/\*\*/g, "").trim();
+      if (text.includes(":")) text = text.split(":")[0].trim();
+      if (
+        text.length > 2 &&
+        text.length < 60 &&
+        !text.startsWith("Pros") &&
+        !text.startsWith("Cons") &&
+        !text.startsWith("My Recommendation") &&
+        !text.startsWith("✅")
+      ) {
+        options.push(text);
+      }
+    }
+  }
+  return options.slice(0, 6);
+}
+
+function OptionsBlock({ options, onSend }: { options: string[]; onSend: (text: string) => void }) {
+  const [customMode, setCustomMode] = useState(false);
+  const [customText, setCustomText] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (customMode) inputRef.current?.focus();
+  }, [customMode]);
+
+  return (
+    <div className="mt-4">
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+        Quick replies
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {options.map((opt, i) => (
+          <button
+            key={opt}
+            onClick={() => onSend(opt)}
+            className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground/90 transition-colors hover:border-primary/40 hover:bg-primary/5 text-left"
+          >
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-border bg-background text-[10px] font-bold text-muted-foreground">
+              {i + 1}
+            </span>
+            {opt}
+          </button>
+        ))}
+        {!customMode ? (
+          <button
+            onClick={() => setCustomMode(true)}
+            className="flex items-center gap-3 rounded-lg border border-dashed border-border px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground text-left"
+          >
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-[10px] font-bold">
+              {options.length + 1}
+            </span>
+            Custom reply...
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
+            <input
+              ref={inputRef}
+              value={customText}
+              onChange={(e) => setCustomText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && customText.trim()) {
+                  onSend(customText.trim());
+                  setCustomText("");
+                  setCustomMode(false);
+                }
+                if (e.key === "Escape") setCustomMode(false);
+              }}
+              placeholder="Type your reply and press Enter..."
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+            <button
+              onClick={() => {
+                if (customText.trim()) {
+                  onSend(customText.trim());
+                  setCustomText("");
+                  setCustomMode(false);
+                }
+              }}
+              className="text-xs text-primary hover:text-primary/80"
+            >
+              Send
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function ChatBubble({ message, onGeneratePrompt, onSend }: { message: ChatMessage; onGeneratePrompt?: (toolName: string) => void; onSend?: (text: string) => void }) {
   const isUser = message.author === "user";
 
   if (isUser) {
@@ -94,6 +191,13 @@ export function ChatBubble({ message, onGeneratePrompt }: { message: ChatMessage
         {message.kind === "prompt" && message.generated_prompt && (
           <PromptCard generatedPrompt={message.generated_prompt} />
         )}
+
+        {(message.kind === "text" || message.kind === "tool") && onSend && (() => {
+          const options = extractOptions(message.content);
+          return options.length > 1 ? (
+            <OptionsBlock options={options} onSend={onSend} />
+          ) : null;
+        })()}
       </div>
     </div>
   );

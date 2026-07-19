@@ -196,11 +196,34 @@ def extract_recommendation(text: str) -> str:
     return lines[0] if lines else text.strip()
 
 
-def parse_structured_json(text: str) -> dict | None:
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        return None
-    try:
-        return json.loads(match.group())
-    except json.JSONDecodeError:
-        return None
+def parse_structured_json(text: str) -> tuple[dict | None, str]:
+    """
+    Returns (parsed_json, cleaned_text).
+    cleaned_text has the JSON block removed from it permanently.
+    """
+    # Try <JSON> tags first
+    tag_match = re.search(r"<JSON>(.*?)</JSON>", text, re.DOTALL)
+    if tag_match:
+        try:
+            data = json.loads(tag_match.group(1).strip())
+            cleaned = (text[:tag_match.start()] + text[tag_match.end():]).strip()
+            return data, cleaned
+        except json.JSONDecodeError:
+            pass
+    # Also strip malformed <JSON> tags even if JSON parsing failed
+    text_clean = re.sub(r"<JSON>[\s\S]*?</JSON>", "", text).strip()
+    text_clean = re.sub(r"<JSON>[\s\S]*", "", text_clean).strip()
+
+    # Find the last { that starts a valid JSON block
+    # Walk backwards through the text to find JSON
+    last_brace = text.rfind('{')
+    while last_brace != -1:
+        candidate = text[last_brace:]
+        try:
+            data = json.loads(candidate)
+            cleaned = text[:last_brace].strip().rstrip('}').strip()
+            return data, cleaned
+        except json.JSONDecodeError:
+            last_brace = text.rfind('{', 0, last_brace)
+
+    return None, text_clean

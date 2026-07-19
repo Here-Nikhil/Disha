@@ -85,10 +85,10 @@ Never ask unnecessary questions.
 STRUCTURED OUTPUT
 ------------------------
 
-Always end your response with a JSON block on its own line.
+Always end your response with a JSON block wrapped in <JSON> tags on its own line.
 Return this structure:
 
-{"phase":"Requirements|Architecture|Tool Selection|Prompt Generation","tech_stack":["..."],"tool_recommendations":[{"name":"...","description":"...","category":"Deployment|Database|Frontend|Backend|IDE|Auth","paid":false,"best_for":"...","pros":["..."],"cons":["..."]}],"generated_prompt":{"title":"...","platform":"Cursor|Claude Code|Lovable|Replit|Windsurf|Bolt","body":"..."}}
+<JSON>{"phase":"Requirements|Architecture|Tool Selection|Prompt Generation","tech_stack":["..."],"tool_recommendations":[{"name":"...","description":"...","category":"Deployment|Database|Frontend|Backend|IDE|Auth","paid":false,"best_for":"...","pros":["..."],"cons":["..."]}],"generated_prompt":{"title":"...","platform":"Cursor|Claude Code|Lovable|Replit|Windsurf|Bolt","body":"..."}}</JSON>
 
 Rules:
 - tool_recommendations is ALWAYS an array.

@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { AppSidebar, MobileSidebarTrigger } from "@/components/disha/app-sidebar";
 import { useAuth } from "@clerk/tanstack-react-start";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
-import { setAuthToken } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { setAuthToken, setTokenRefresher } from "@/lib/api";
 import { useStore } from "@/lib/mock-store";
 
 export function AppShell({ children, header }: { children: ReactNode; header?: ReactNode }) {
@@ -13,6 +13,7 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
   const loadTools = useStore((s) => s.loadTools);
   const loadApiKeys = useStore((s) => s.loadApiKeys);
   const initialized = useRef(false);
+  const [tokenReady, setTokenReady] = useState(false);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
@@ -25,24 +26,35 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
       initialized.current = true;
 
       const refreshToken = async () => {
-        const token = await getToken();
+        const token = await getToken({ skipCache: true });
         if (token) {
           setAuthToken(token);
         }
+        return token;
       };
 
+      setTokenRefresher(async () => {
+        try {
+          const t = await getToken({ skipCache: true });
+          return t;
+        } catch {
+          return null;
+        }
+      });
+
       refreshToken().then(() => {
+        setTokenReady(true);
         loadWorkspaces();
         loadTools();
         loadApiKeys();
       });
 
-      const interval = setInterval(refreshToken, 50000);
+      const interval = setInterval(refreshToken, 25000);
       return () => clearInterval(interval);
     }
   }, [isLoaded, isSignedIn, getToken, loadWorkspaces, loadTools]);
 
-  if (!isLoaded || !isSignedIn) {
+  if (!isLoaded || !isSignedIn || !tokenReady) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />

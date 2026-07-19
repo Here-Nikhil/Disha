@@ -1,13 +1,26 @@
 const BASE = import.meta.env.VITE_API_URL ?? "https://intellicode-navigator-production.up.railway.app";
 
-// Global token store — set once when user signs in via AppShell
 let _token: string | null = null;
+let _refreshFn: (() => Promise<string | null>) | null = null;
 
 export function setAuthToken(token: string) {
   _token = token;
 }
 
+export function setTokenRefresher(fn: () => Promise<string | null>) {
+  _refreshFn = fn;
+}
+
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
+  if (_refreshFn) {
+    try {
+      const fresh = await _refreshFn();
+      if (fresh) _token = fresh;
+    } catch {
+      // keep existing _token
+    }
+  }
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
