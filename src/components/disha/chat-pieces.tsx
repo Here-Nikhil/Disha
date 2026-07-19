@@ -53,9 +53,23 @@ export function TechBadge({ label }: { label: string }) {
 }
 
 function extractOptions(content: string): string[] {
-  const lines = content.split("\n");
+  // Split into paragraphs/sections by double newline
+  const sections = content.split(/\n\n+/);
+  
+  // Find the last section that contains bullet points
+  let lastBulletSection = "";
+  for (const section of sections) {
+    const lines = section.split("\n");
+    const hasTopLevelBullet = lines.some(
+      (line) => !line.match(/^\s{3,}/) && line.match(/^[\s]*[-*•]\s+/) && !line.match(/^\s*[-*•]\s+(Pros|Cons|My Rec|✅)/)
+    );
+    if (hasTopLevelBullet) lastBulletSection = section;
+  }
+
+  if (!lastBulletSection) return [];
+
   const options: string[] = [];
-  for (const line of lines) {
+  for (const line of lastBulletSection.split("\n")) {
     if (line.match(/^\s{3,}/)) continue;
     const match = line.match(/^[\s]*[-*•]\s+(.+)/) || line.match(/^[\s]*\d+\.\s+(.+)/);
     if (match) {
