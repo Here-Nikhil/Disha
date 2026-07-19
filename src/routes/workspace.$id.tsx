@@ -45,7 +45,8 @@ function stripMarkdown(text: string): string {
 
 function WorkspaceRoute() {
   const { id } = Route.useParams();
-  const workspace = useStore((s) => s.workspaces.find((w) => w.id === id));
+  const workspaces = useStore((s) => s.workspaces);
+  const workspace = workspaces.find((w) => w.id === id);
   const setActive = useStore((s) => s.setActiveWorkspace);
   const sendMessage = useStore((s) => s.sendMessage);
   const addPrompt = useStore((s) => s.addPrompt);
@@ -62,11 +63,10 @@ function WorkspaceRoute() {
   }, [workspace?.id]);
 
   useEffect(() => {
-    if (!workspace) {
-      const t = setTimeout(() => navigate({ to: "/" }), 400);
-      return () => clearTimeout(t);
+    if (!workspace && workspaces.length > 0) {
+      navigate({ to: "/" });
     }
-  }, [workspace, navigate]);
+  }, [workspace, workspaces.length, navigate]);
 
   if (!workspace) {
     return (
