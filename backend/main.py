@@ -46,10 +46,6 @@ from summarizer import maybe_summarize_conversation
 settings = get_settings()
 
 
-# ---------------------------------------------------------------------------
-# Clerk token verification
-# ---------------------------------------------------------------------------
-
 async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
     auth_header = request.headers.get("Authorization", "")
 
@@ -103,10 +99,6 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
     return user
 
 
-# ---------------------------------------------------------------------------
-# App setup
-# ---------------------------------------------------------------------------
-
 async def init_db() -> None:
     async with get_engine().begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -146,10 +138,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
 
 @app.get("/health")
 async def health():
@@ -239,6 +227,7 @@ async def list_workspaces(
     )
     return result.scalars().all()
 
+
 @app.delete("/workspaces/{workspace_id}")
 async def delete_workspace(
     workspace_id: UUID,
@@ -254,14 +243,10 @@ async def delete_workspace(
     )
     conversation = conversation_result.scalar_one_or_none()
     if conversation:
-        await db.execute(
-            select(Message).where(Message.conversation_id == conversation.id)
-        )
         from sqlalchemy import delete as sql_delete
         await db.execute(sql_delete(Message).where(Message.conversation_id == conversation.id))
         await db.delete(conversation)
 
-    from models import Project
     project_result = await db.execute(
         select(Project).where(Project.workspace_id == workspace.id)
     )
@@ -272,6 +257,7 @@ async def delete_workspace(
     await db.delete(workspace)
     await db.flush()
     return {"status": "deleted"}
+
 
 @app.get("/workspaces/{workspace_id}/messages", response_model=list[MessageResponse])
 async def get_messages(
@@ -334,7 +320,17 @@ async def send_message(
         content=orchestration.content,
         tool_data=orchestration.tool_data,
         consensus_data=orchestration.consensus_data,
+        generated_prompt_data=orchestration.generated_prompt.model_dump() if orchestration.generated_prompt else None,
     )
+
+    if orchestration.generated_prompt:
+        db.add(GeneratedPrompt(
+            workspace_id=workspace.id,
+            title=orchestration.generated_prompt.title,
+            platform=orchestration.generated_prompt.platform,
+            body=orchestration.generated_prompt.body,
+        ))
+
     db.add(assistant_message)
     conversation.message_count += 1
 
@@ -370,9 +366,13 @@ async def send_message(
     await db.refresh(user_message)
     await db.refresh(assistant_message)
 
+    assistant_response = message_to_response(assistant_message)
+    if orchestration.generated_prompt and not assistant_response.generated_prompt:
+        assistant_response.generated_prompt = orchestration.generated_prompt
+
     return SendMessageResponse(
         user_message=message_to_response(user_message),
-        assistant_message=message_to_response(assistant_message),
+        assistant_message=assistant_response,
         workspace=WorkspaceResponse.model_validate(workspace),
     )
 
@@ -448,8 +448,17 @@ async def stream_message(
                 content=full_content,
                 tool_data=orchestration.tool_data,
                 consensus_data=orchestration.consensus_data,
+                generated_prompt_data=orchestration.generated_prompt.model_dump() if orchestration.generated_prompt else None,
             )
             stream_db.add(assistant_message)
+
+            if orchestration.generated_prompt:
+                stream_db.add(GeneratedPrompt(
+                    workspace_id=ws_id,
+                    title=orchestration.generated_prompt.title,
+                    platform=orchestration.generated_prompt.platform,
+                    body=orchestration.generated_prompt.body,
+                ))
 
             conv_result = await stream_db.execute(
                 select(Conversation).where(Conversation.id == conv_id)
@@ -474,6 +483,7 @@ async def stream_message(
             "kind": orchestration.kind,
             "tool": orchestration.tool_data,
             "consensus": orchestration.consensus_data,
+            "generated_prompt": orchestration.generated_prompt.model_dump() if orchestration.generated_prompt else None,
         }
         yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
 

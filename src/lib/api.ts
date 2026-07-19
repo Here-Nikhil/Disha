@@ -1,4 +1,4 @@
-const BASE = "https://intellicode-navigator-production.up.railway.app";
+const BASE = import.meta.env.VITE_API_URL ?? "https://intellicode-navigator-production.up.railway.app";
 
 // Global token store — set once when user signs in via AppShell
 let _token: string | null = null;

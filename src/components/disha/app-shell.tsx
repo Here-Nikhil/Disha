@@ -11,6 +11,7 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
   const navigate = useNavigate();
   const loadWorkspaces = useStore((s) => s.loadWorkspaces);
   const loadTools = useStore((s) => s.loadTools);
+  const loadApiKeys = useStore((s) => s.loadApiKeys);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
       refreshToken().then(() => {
         loadWorkspaces();
         loadTools();
+        loadApiKeys();
       });
 
       const interval = setInterval(refreshToken, 50000);

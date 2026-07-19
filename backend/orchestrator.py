@@ -5,7 +5,7 @@ from pathlib import Path
 
 from consensus import run_consensus
 from providers import AIProviderClient, parse_structured_json
-from schemas import OrchestratorResult
+from schemas import GeneratedPromptData, OrchestratorResult
 
 GREETING_PATTERNS = [
     r"^(hi|hello|hey|howdy|greetings)\b",
@@ -48,6 +48,24 @@ ARCHITECTURE_KEYWORDS = [
     "infra",
 ]
 
+PROMPT_KEYWORDS = [
+    "generate a prompt",
+    "give me a prompt",
+    "prompt for",
+    "create a prompt",
+    "make a prompt",
+    "write a prompt",
+]
+
+PLATFORM_MAP = {
+    "cursor": "Cursor",
+    "claude code": "Claude Code",
+    "lovable": "Lovable",
+    "replit": "Replit",
+    "windsurf": "Windsurf",
+    "bolt": "Bolt",
+}
+
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "system_prompt.txt"
 DISHA_SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8")
 
@@ -68,6 +86,69 @@ def _provider_for_model(model: str) -> str:
     if "llama" in model_lower or "mixtral" in model_lower:
         return "groq"
     return "groq"
+
+
+def _detect_platform(text: str) -> str:
+    lowered = text.lower()
+    for key, val in PLATFORM_MAP.items():
+        if key in lowered:
+            return val
+    return "Cursor"
+
+
+def _extract_prompt_body(content: str) -> str | None:
+    markers = [
+        "Prompt for Cursor",
+        "Prompt for Claude Code",
+        "Prompt for Lovable",
+        "Prompt for Replit",
+        "Prompt for Windsurf",
+        "Prompt for Bolt",
+        "**Prompt:**",
+        "Prompt:",
+    ]
+    for marker in markers:
+        if marker in content:
+            parts = content.split(marker, 1)
+            if len(parts) > 1:
+                body = parts[1].strip()
+                for stop in ["Next Steps", "##", "Framework Options", "✅", "* Option"]:
+                    if stop in body:
+                        body = body.split(stop)[0].strip()
+                if len(body) > 30:
+                    return body
+    return None
+
+
+def _is_prompt_request(text: str) -> bool:
+    return any(kw in text.lower() for kw in PROMPT_KEYWORDS)
+
+
+async def _force_generate_prompt(
+    text: str,
+    context: str,
+    client: AIProviderClient,
+    available: list[str],
+) -> GeneratedPromptData | None:
+    platform = _detect_platform(text)
+    system = (
+        f"You are a prompt engineer. Generate a single ready-to-use prompt for {platform}. "
+        "Output ONLY the prompt text with no explanation, no JSON, no markdown headers. "
+        "The prompt should be specific, actionable, and copy-paste ready."
+    )
+    user = f"{context}\n\nGenerate a {platform} prompt based on the project context above."
+    try:
+        response = await client.complete(available[0], system, user)
+        body = response.content.strip()
+        if len(body) > 30:
+            return GeneratedPromptData(
+                title=f"Prompt for {platform}",
+                platform=platform,
+                body=body,
+            )
+    except Exception:
+        pass
+    return None
 
 
 def classify_message(text: str) -> str:
@@ -133,11 +214,23 @@ async def orchestrate_message(
         return OrchestratorResult(
             kind="text",
             content=(
-                "I'd love to help with architecture planning, but no AI provider keys are configured. "
-                "Add your Groq, OpenAI, Anthropic, or Google API key in Settings to get started."
+                "**No AI provider configured.**\n\n"
+                "Go to [Settings](/settings) and add a Groq, OpenAI, Anthropic, or Google API key to get started."
             ),
-            confidence_delta=3,
+            confidence_delta=0,
         )
+
+    # If user is explicitly requesting a prompt, force generate it directly
+    if _is_prompt_request(text):
+        generated_prompt = await _force_generate_prompt(text, context, client, available)
+        if generated_prompt:
+            return OrchestratorResult(
+                kind="prompt",
+                content=f"Here's your **{generated_prompt.platform}** prompt based on your project:",
+                generated_prompt=generated_prompt,
+                phase="Prompt Generation",
+                confidence_delta=8,
+            )
 
     if intent == "ambiguous":
         consensus = await run_consensus(client, text, context)
@@ -186,10 +279,10 @@ async def orchestrate_message(
     tool_data = None
     phase = None
     tech_stack = None
+    generated_prompt = None
 
     if structured:
         recommendations = structured.get("tool_recommendations", [])
-        # handle old single tool_recommendation format too
         if not recommendations and structured.get("tool_recommendation"):
             recommendations = [structured["tool_recommendation"]]
 
@@ -206,31 +299,50 @@ async def orchestrate_message(
                 }
                 for tr in recommendations
             ]
+
         phase = structured.get("phase")
         tech_stack = structured.get("tech_stack")
 
+        gp = structured.get("generated_prompt")
+        if gp and gp.get("title") and gp.get("platform") and gp.get("body"):
+            generated_prompt = GeneratedPromptData(
+                title=gp["title"],
+                platform=gp["platform"],
+                body=gp["body"],
+            )
+
     content = response.content
     if structured:
-        content = re.sub(r"\{[\s\S]*\}\s*$", "", content).strip()
-        # Also strip any remaining JSON-like blocks
-        content = re.sub(r"\{\"phase\"[\s\S]*$", "", content).strip()
+        content = re.sub(r"\{[\s\S]*?\}\s*$", "", content).strip()
+        content = re.sub(r"\{\"phase\"[\s\S]*", "", content).strip()
+        content = re.sub(r"\{\"tool_recommendations\"[\s\S]*", "", content).strip()
+        content = re.sub(r"\{\"tech_stack\"[\s\S]*", "", content).strip()
 
-    if tool_data and len(tool_data) > 0:
-        return OrchestratorResult(
-            kind="tool",
-            content=content or f"Recommended: {tool_data[0]['name']}",
-            tool_data=tool_data,
-            phase=phase,
-            tech_stack=tech_stack,
-            confidence_delta=6,
-        )
+    if not generated_prompt and any(kw in text.lower() for kw in PROMPT_KEYWORDS):
+        platform = _detect_platform(text)
+        prompt_body = _extract_prompt_body(content) or _extract_prompt_body(response.content)
+        if prompt_body:
+            generated_prompt = GeneratedPromptData(
+                title=f"Prompt for {platform}",
+                platform=platform,
+                body=prompt_body,
+            )
+
+    if generated_prompt:
+        kind = "prompt"
+    elif tool_data and len(tool_data) > 0:
+        kind = "tool"
+    else:
+        kind = "text"
 
     return OrchestratorResult(
-        kind="text",
-        content=content,
+        kind=kind,
+        content=content or (f"Here's your prompt for {generated_prompt.platform}" if generated_prompt else "Here's my recommendation."),
+        tool_data=tool_data,
+        generated_prompt=generated_prompt,
         phase=phase,
         tech_stack=tech_stack,
-        confidence_delta=5,
+        confidence_delta=8 if generated_prompt else (6 if tool_data else 5),
     )
 
 

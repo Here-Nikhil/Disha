@@ -46,20 +46,22 @@ function PromptsPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const fetchPrompts = async () => {
-      setLoading(true);
-      try {
-        const data = await api.getPrompts(activeWs?.id);
-        setPrompts(data);
-      } catch (err) {
-        toast.error("Could not load prompts");
-      } finally {
-        setLoading(false);
-      }
-    };
+  if (!activeWs?.id) return; // wait until workspace is available
 
-    fetchPrompts();
-  }, [activeWs?.id]);
+  const fetchPrompts = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getPrompts(activeWs.id);
+      setPrompts(data);
+    } catch (err) {
+      toast.error("Could not load prompts");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchPrompts();
+}, [activeWs?.id]);
 
   const filtered = useMemo(() => {
     if (platform === "All") return prompts;

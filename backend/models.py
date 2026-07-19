@@ -83,6 +83,7 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     tool_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     consensus_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    generated_prompt_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     conversation: Mapped["Conversation"] = relationship(back_populates="messages")

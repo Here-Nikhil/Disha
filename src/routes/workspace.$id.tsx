@@ -9,6 +9,7 @@ import { ArrowUp, Mic, Sparkles, Square } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { pickTranscribeProvider, transcribeAudio } from "@/lib/transcribe";
+import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/workspace/$id")({
   head: ({ params }) => ({
@@ -79,13 +80,15 @@ function WorkspaceRoute() {
           }
           sendMessage(workspace.id, t);
         }}
-        onGeneratePrompt={(toolName) => {
-          addPrompt(workspace.id, {
-            title: `${toolName} integration prompt`,
-            platform: "Claude Code",
-            body: `You are helping integrate ${toolName} into an existing codebase. Start by reading the current architecture, then propose the minimal changes needed to add ${toolName}. Include file diffs, migration steps, and rollback notes.`,
-          });
-          toast.success(`Prompt added to library for ${toolName}`);
+        onGeneratePrompt={async (toolName) => {
+          const tool = useStore.getState().tools.find((t) => t.name === toolName);
+          if (!tool) { toast.error("Tool not found"); return; }
+          try {
+            await api.generatePrompt(tool.id, workspace.id, "Claude Code");
+            toast.success(`Prompt generated for ${toolName} — view it in Prompt Library`);
+          } catch {
+            toast.error("Failed to generate prompt. Check your API key in Settings.");
+          }
         }}
       />
     </AppShell>

@@ -22,7 +22,7 @@ export type Phase =
   | "Tool Selection"
   | "Prompt Generation";
 
-export type MessageKind = "text" | "tool" | "consensus";
+export type MessageKind = "text" | "tool" | "consensus" | "prompt";
 
 export type ToolRec = {
   name: string;
@@ -45,6 +45,11 @@ export type ChatMessage = {
     options: { model: string; recommendation: string }[];
     finalIndex: number;
     summary: string;
+  };
+  generated_prompt?: {
+    title: string;
+    platform: string;
+    body: string;
   };
   createdAt: number;
 };
@@ -121,6 +126,7 @@ type State = {
   loadMessages: (workspaceId: string) => Promise<void>;
   loadWorkspaces: () => Promise<void>;
   loadTools: () => Promise<void>;
+  loadApiKeys: () => Promise<void>;
 };
 
 let _uidCounter = 0;
@@ -178,8 +184,8 @@ export const useStore = create<State>((set, get) => ({
         author: m.author as "user" | "disha",
         kind: m.kind as MessageKind,
         content: m.content,
-        tool: m.tool ?? undefined,
-        tools: m.tools ?? undefined,
+        tool: m.tool || undefined,
+        tools: m.tools || undefined,
         consensus: m.consensus
           ? {
               options: m.consensus.options,
@@ -187,6 +193,7 @@ export const useStore = create<State>((set, get) => ({
               summary: m.consensus.summary,
             }
           : undefined,
+        generated_prompt: m.generated_prompt || undefined,
         createdAt: new Date(m.created_at).getTime(),
       }));
       set((s) => ({
@@ -218,6 +225,7 @@ export const useStore = create<State>((set, get) => ({
       console.error("Failed to load workspaces", e);
     }
   },
+
   loadTools: async () => {
     try {
       const data = await api.getTools();
@@ -233,6 +241,21 @@ export const useStore = create<State>((set, get) => ({
       set({ tools: mapped });
     } catch (e) {
       console.error("Failed to load tools", e);
+    }
+  },
+
+  loadApiKeys: async () => {
+    try {
+      const data = await api.getApiKeys();
+      const updates: Partial<Record<ApiProvider, { value: string; status: ApiKeyStatus }>> = {};
+      for (const item of data) {
+        if (item.masked_key) {
+          updates[item.provider as ApiProvider] = { value: item.masked_key, status: item.status as ApiKeyStatus };
+        }
+      }
+      set((s) => ({ apiKeys: { ...s.apiKeys, ...updates } }));
+    } catch (e) {
+      console.error("Failed to load api keys", e);
     }
   },
 
@@ -314,22 +337,35 @@ export const useStore = create<State>((set, get) => ({
     api.sendMessage(workspaceId, text)
       .then((reply: any) => {
         const msg = reply.assistant_message || reply;
+
+        // Normalize nulls to undefined
+        const generatedPrompt = msg.generated_prompt || undefined;
+        const consensus = msg.consensus || undefined;
         const toolsArr: ToolRec[] | undefined =
           Array.isArray(msg.tools) && msg.tools.length > 0
             ? msg.tools
             : msg.tool
             ? [msg.tool]
             : undefined;
+
+        // Determine kind — check generated_prompt first, before tools
+        let kind: MessageKind = "text";
+        if (generatedPrompt) kind = "prompt";
+        else if (consensus) kind = "consensus";
+        else if (toolsArr) kind = "tool";
+
         const dishaMsg: ChatMessage = {
           id: uid(),
           author: "disha",
-          kind: msg.consensus ? "consensus" : toolsArr ? "tool" : "text",
+          kind,
           content: msg.content || "Here's my recommendation.",
           tool: toolsArr?.[0],
           tools: toolsArr,
-          consensus: msg.consensus,
+          consensus,
+          generated_prompt: generatedPrompt,
           createdAt: Date.now(),
         };
+
         const wsPatch = reply.workspace
           ? {
               techStack: reply.workspace.tech_stack ?? undefined,
@@ -340,6 +376,7 @@ export const useStore = create<State>((set, get) => ({
                   : undefined,
             }
           : {};
+
         set((s) => ({
           workspaces: s.workspaces.map((w) =>
             w.id === workspaceId
@@ -359,7 +396,7 @@ export const useStore = create<State>((set, get) => ({
           id: uid(),
           author: "disha",
           kind: "text",
-          content: `I encountered an error processing your message. Please check your API key in Settings.`,
+          content: `**No AI provider configured.**\n\nGo to [Settings](/settings) and add a Groq, OpenAI, Anthropic, or Google API key to get started.`,
           createdAt: Date.now(),
         };
         set((s) => ({

@@ -108,7 +108,7 @@ function ApiKeysSection() {
   const useAccountKeys = useStore((s) => s.useAccountKeys);
   const setUseAccountKeys = useStore((s) => s.setUseAccountKeys);
   const [drafts, setDrafts] = useState<Record<ApiProvider, string>>(
-    () => Object.fromEntries(providers.map((p) => [p, apiKeys[p]?.value ?? ""])) as Record<ApiProvider, string>,
+    Object.fromEntries(providers.map((p) => [p, apiKeys[p]?.value ?? ""])) as Record<ApiProvider, string>,
   );
 
   return (

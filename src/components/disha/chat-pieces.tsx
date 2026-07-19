@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, Tool, ToolCategory } from "@/lib/mock-store";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ExternalLink, Sparkles } from "lucide-react";
+import { ExternalLink, Sparkles, Copy, Download, Eye } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
 const categoryColor: Record<ToolCategory, string> = {
@@ -88,6 +90,10 @@ export function ChatBubble({ message, onGeneratePrompt }: { message: ChatMessage
         {message.kind === "consensus" && message.consensus && (
           <ConsensusCard data={message.consensus} />
         )}
+
+        {message.kind === "prompt" && message.generated_prompt && (
+          <PromptCard generatedPrompt={message.generated_prompt} />
+        )}
       </div>
     </div>
   );
@@ -119,6 +125,79 @@ export function ToolRecommendationCard({
         </Button>
       </div>
     </div>
+  );
+}
+
+export function PromptCard({
+  generatedPrompt,
+}: {
+  generatedPrompt: { title: string; platform: string; body: string };
+}) {
+  const [viewing, setViewing] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard?.writeText(generatedPrompt.body);
+    toast.success("Prompt copied to clipboard");
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([generatedPrompt.body], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${generatedPrompt.title.replace(/\s+/g, "-").toLowerCase()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Prompt downloaded");
+  };
+
+  return (
+    <>
+      <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-1">
+              Generated Prompt
+            </div>
+            <h4 className="font-display text-base font-semibold">{generatedPrompt.title}</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">Platform: {generatedPrompt.platform}</p>
+          </div>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <Button size="sm" onClick={() => setViewing(true)}>
+            <Eye className="size-3.5 mr-1" /> View Prompt
+          </Button>
+          <Button size="sm" variant="ghost" onClick={handleCopy}>
+            <Copy className="size-3.5 mr-1" /> Copy
+          </Button>
+          <Button size="sm" variant="ghost" onClick={handleDownload}>
+            <Download className="size-3.5 mr-1" /> Download
+          </Button>
+        </div>
+      </div>
+
+      <Dialog open={viewing} onOpenChange={setViewing}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{generatedPrompt.title}</DialogTitle>
+            <DialogDescription>Platform: {generatedPrompt.platform}</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-4 font-mono text-xs leading-relaxed">
+            {generatedPrompt.body}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={handleCopy}>
+              <Copy className="size-4 mr-1" /> Copy
+            </Button>
+            <Button size="sm" onClick={handleDownload}>
+              <Download className="size-4 mr-1" /> Download
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -196,7 +275,7 @@ export function ConfidenceRing({ value }: { value: number }) {
   );
 }
 
-export function ToolCard({ tool, onGenerate }: { tool: Tool; onGenerate: () => void }) {
+export function ToolCard({ tool, onGenerate, generating }: { tool: Tool; onGenerate: () => void; generating?: boolean }) {
   return (
     <div className="flex h-full flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40">
       <div className="mb-2 flex items-start justify-between gap-2">
@@ -214,7 +293,9 @@ export function ToolCard({ tool, onGenerate }: { tool: Tool; onGenerate: () => v
         </div>
       </div>
       <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">{tool.description}</p>
-      <Button size="sm" className="mt-4 self-start" onClick={onGenerate}>Generate Prompt</Button>
+      <Button size="sm" className="mt-4 self-start" onClick={onGenerate} disabled={generating}>
+        {generating ? "Generating…" : "Generate Prompt"}
+      </Button>
     </div>
   );
 }

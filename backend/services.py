@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import get_settings
 from encryption import decrypt_api_key, encrypt_api_key, mask_api_key
 from models import ApiKey, Conversation, Message, Project, ToolRegistry, User, Workspace
-from schemas import MessageResponse, ToolData, ConsensusData, ConsensusOption
+from schemas import MessageResponse, ToolData, ConsensusData, ConsensusOption, GeneratedPromptData
 
 
 async def get_user_api_keys(db: AsyncSession, user_id: uuid.UUID) -> dict[str, str]:

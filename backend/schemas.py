@@ -49,6 +49,12 @@ class ConsensusData(BaseModel):
     summary: str
 
 
+class GeneratedPromptData(BaseModel):
+    title: str
+    platform: str
+    body: str
+
+
 class MessageResponse(BaseModel):
     id: UUID
     author: str
@@ -57,6 +63,7 @@ class MessageResponse(BaseModel):
     tool: ToolData | None = None
     tools: list[ToolData] | None = None
     consensus: ConsensusData | None = None
+    generated_prompt: GeneratedPromptData | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -127,6 +134,7 @@ class OrchestratorResult(BaseModel):
     content: str
     tool_data: list[dict[str, Any]] | dict[str, Any] | None = None
     consensus_data: dict[str, Any] | None = None
+    generated_prompt: GeneratedPromptData | None = None
     phase: str | None = None
     tech_stack: list[str] | None = None
     confidence_delta: int = 0
