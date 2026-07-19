@@ -15,6 +15,7 @@ import {
   Sparkles,
   Settings2,
   ShieldCheck,
+  Pencil,
 } from "lucide-react";
 
 function LogoMark({ className }: { className?: string }) {
@@ -51,10 +52,13 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
   const setActive = useStore((s) => s.setActiveWorkspace);
   const createWorkspace = useStore((s) => s.createWorkspace);
   const deleteWorkspace = useStore((s) => s.deleteWorkspace);
+  const renameWorkspace = useStore((s) => s.renameWorkspace);
   const mockUser = useStore((s) => s.user);
   const { user } = useUser();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress || mockUser.name;
   const displayEmail = user?.primaryEmailAddress?.emailAddress || mockUser.email;
@@ -99,10 +103,11 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
         <div className="space-y-0.5">
           {workspaces.map((w) => {
             const isActive = w.id === activeId && pathname.startsWith("/workspace");
+            const isEditing = editingId === w.id;
             return (
               <button
                 key={w.id}
-                onClick={() => handleSwitch(w.id)}
+                onClick={() => !isEditing && handleSwitch(w.id)}
                 className={cn(
                   "group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
                   isActive
@@ -111,7 +116,44 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
                 )}
               >
                 <span className={cn("size-2 shrink-0 rounded-full", activityDot[w.activity])} />
-                <span className="min-w-0 flex-1 truncate">{w.name}</span>
+                {isEditing ? (
+                  <input
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onBlur={() => {
+                      const trimmed = editingName.trim();
+                      if (trimmed && trimmed !== w.name) renameWorkspace(w.id, trimmed);
+                      setEditingId(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                      } else if (e.key === "Escape") {
+                        setEditingName(w.name);
+                        setEditingId(null);
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    autoFocus
+                    className="min-w-0 flex-1 rounded border border-primary/40 bg-background px-1.5 py-0.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                ) : (
+                  <>
+                    <span className="min-w-0 flex-1 truncate">{w.name}</span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingId(w.id);
+                        setEditingName(w.name);
+                      }}
+                      className="opacity-0 transition-opacity group-hover:opacity-100"
+                      title="Rename workspace"
+                    >
+                      <Pencil className="size-3 text-muted-foreground hover:text-foreground" />
+                    </span>
+                  </>
+                )}
                 <span
                   onClick={(e) => {
                     e.stopPropagation();
@@ -120,6 +162,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
                       navigate({ to: "/" });
                     }
                   }}
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   ×
                 </span>
