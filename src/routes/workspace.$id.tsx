@@ -32,6 +32,17 @@ const examplePrompts = [
 
 const phases: Phase[] = ["Requirements", "Architecture", "Tool Selection", "Prompt Generation"];
 
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/~~(.*?)~~/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/#{1,6}\s?/g, "")
+    .trim();
+}
+
 function WorkspaceRoute() {
   const { id } = Route.useParams();
   const workspace = useStore((s) => s.workspaces.find((w) => w.id === id));
@@ -50,12 +61,18 @@ function WorkspaceRoute() {
     }
   }, [workspace?.id]);
 
+  useEffect(() => {
+    if (!workspace) {
+      const t = setTimeout(() => navigate({ to: "/" }), 400);
+      return () => clearTimeout(t);
+    }
+  }, [workspace, navigate]);
+
   if (!workspace) {
     return (
       <AppShell>
-        <div className="p-8">
-          <p className="text-muted-foreground">Workspace not found.</p>
-          <Button className="mt-3" onClick={() => navigate({ to: "/" })}>Back to dashboard</Button>
+        <div className="flex h-[calc(100vh-3.5rem)] items-center justify-center">
+          <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       </AppShell>
     );
@@ -76,7 +93,7 @@ function WorkspaceRoute() {
         workspaceId={workspace.id}
         onSend={(t) => {
           if (workspace.messages.length === 0) {
-            renameWorkspace(workspace.id, t.slice(0, 48));
+            renameWorkspace(workspace.id, stripMarkdown(t).slice(0, 48));
           }
           sendMessage(workspace.id, t);
         }}
