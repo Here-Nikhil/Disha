@@ -64,4 +64,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ provider, api_key: key }),
     }),
+  getPendingTools: () => req<any[]>("/admin/tools/pending"),
+  approveTool: (id: string) => req<any>(`/admin/tools/${id}/approve`, { method: "POST" }),
+  rejectTool: (id: string) => req<any>(`/admin/tools/${id}/reject`, { method: "DELETE" }),
+  getAdminUsers: () => req<any[]>("/admin/users"),
+  suspendUser: (id: string) => req<any>(`/admin/users/${id}/suspend`, { method: "POST" }),
+  deleteAdminUser: (id: string) => req<any>(`/admin/users/${id}`, { method: "DELETE" }),
+  getCurrentUser: () => req<any>("/users/me"),
 };

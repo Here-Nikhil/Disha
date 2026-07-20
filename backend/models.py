@@ -130,6 +130,7 @@ class ToolRegistry(Base):
     is_free: Mapped[bool] = mapped_column(Boolean, default=True)
     official_url: Mapped[str] = mapped_column(String(500), nullable=False)
     supported_prompt_platforms: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    pending: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class GeneratedPrompt(Base):

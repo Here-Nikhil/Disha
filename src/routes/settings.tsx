@@ -32,8 +32,8 @@ export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
-const providers: ApiProvider[] = ["Groq", "OpenAI", "Anthropic", "Google", "OpenRouter"];
-const models = ["llama-3.3-70b", "claude-3.5-sonnet", "gpt-4o", "gemini-1.5-pro"];
+const providers: ApiProvider[] = ["Groq", "OpenAI", "Anthropic", "Google", "OpenRouter", "DeepSeek"];
+const models = ["llama-3.3-70b", "claude-3.5-sonnet", "gpt-4o", "gemini-1.5-pro", "deepseek-chat"];
 
 function SettingsPage() {
   return (

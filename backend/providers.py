@@ -39,6 +39,13 @@ MODEL_ALIASES: dict[str, dict[str, str]] = {
         "claude-3.5-sonnet": "llama-3.3-70b-versatile",
         "gemini-1.5-pro": "llama-3.3-70b-versatile",
     },
+    "deepseek": {
+        "deepseek-chat": "deepseek-chat",
+        "gpt-4o": "deepseek-chat",
+        "claude-3.5-sonnet": "deepseek-chat",
+        "gemini-1.5-pro": "deepseek-chat",
+        "llama-3.3-70b": "deepseek-chat",
+    },
 }
 
 
@@ -48,6 +55,7 @@ def resolve_model(provider: str, model: str | None) -> str:
         "anthropic": "claude-3-5-sonnet-20241022",
         "google": "gemini-1.5-pro",
         "groq": "llama-3.3-70b-versatile",
+        "deepseek": "deepseek-chat",
     }
     if not model:
         return defaults.get(provider, "llama-3.3-70b-versatile")
@@ -66,9 +74,11 @@ class AIProviderClient:
             self.api_keys["google"] = settings.google_api_key
         if not self.api_keys.get("groq") and settings.groq_api_key:
             self.api_keys["groq"] = settings.groq_api_key
+        if not self.api_keys.get("deepseek") and settings.deepseek_api_key:
+            self.api_keys["deepseek"] = settings.deepseek_api_key
 
     def available_providers(self) -> list[str]:
-        return [p for p in ("groq", "openai", "anthropic", "google") if self.api_keys.get(p)]
+        return [p for p in ("groq", "openai", "anthropic", "google", "deepseek") if self.api_keys.get(p)]
 
     async def complete(
         self,
@@ -86,6 +96,8 @@ class AIProviderClient:
             return await self._google(system_prompt, user_prompt, resolved)
         if provider == "groq":
             return await self._groq(system_prompt, user_prompt, resolved)
+        if provider == "deepseek":
+            return await self._deepseek(system_prompt, user_prompt, resolved)
         raise ValueError(f"Unknown provider: {provider}")
 
     async def stream(
@@ -186,6 +198,28 @@ class AIProviderClient:
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
             return ProviderResponse(provider="groq", model=model, content=content)
+
+    async def _deepseek(self, system_prompt: str, user_prompt: str, model: str) -> ProviderResponse:
+        api_key = self.api_keys.get("deepseek")
+        if not api_key:
+            raise RuntimeError("DeepSeek API key not configured")
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                "https://api.deepseek.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.4,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            return ProviderResponse(provider="deepseek", model=model, content=content)
 
 
 def extract_recommendation(text: str) -> str:

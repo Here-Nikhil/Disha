@@ -1,6 +1,6 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useUser } from "@clerk/tanstack-react-start";
+import { useUser, useClerk } from "@clerk/tanstack-react-start";
 import { useStore } from "@/lib/mock-store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   Settings2,
   ShieldCheck,
   Pencil,
+  LogOut,
 } from "lucide-react";
 
 function LogoMark({ className }: { className?: string }) {
@@ -55,6 +56,7 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
   const renameWorkspace = useStore((s) => s.renameWorkspace);
   const mockUser = useStore((s) => s.user);
   const { user } = useUser();
+  const { signOut } = useClerk();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -229,6 +231,14 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
           >
             <Settings2 className="size-4" />
           </Link>
+          <button
+            onClick={() => signOut(() => navigate({ to: "/sign-in" }))}
+            className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-card hover:text-foreground"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <LogOut className="size-4" />
+          </button>
         </div>
       </div>
     </div>

@@ -1,11 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect , useState } from "react";
 import { AppShell } from "@/components/disha/app-shell";
 import { useStore } from "@/lib/mock-store";
 import { Button } from "@/components/ui/button";
 import { Check, X, ShieldAlert, UserX, UserCheck, Trash2, Zap, Coins } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -67,10 +68,27 @@ function SectionCard({ title, description, icon: Icon, children }: { title: stri
 }
 
 function ToolApprovalsSection() {
-  const tools = useStore((s) => s.tools);
-  const approveTool = useStore((s) => s.approveTool);
-  const rejectTool = useStore((s) => s.rejectTool);
-  const pending = tools.filter((t) => t.pending);
+  const [pending, setPending] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getPendingTools()
+      .then(setPending)
+      .catch(() => setPending([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleApprove = async (id: string) => {
+    await api.approveTool(id);
+    setPending((p) => p.filter((t) => t.id !== id));
+    toast.success(`Approved`);
+  };
+
+  const handleReject = async (id: string) => {
+    await api.rejectTool(id);
+    setPending((p) => p.filter((t) => t.id !== id));
+    toast(`Rejected`);
+  };
 
   return (
     <SectionCard
@@ -78,7 +96,9 @@ function ToolApprovalsSection() {
       description="Review new tools submitted to the registry."
       icon={ShieldAlert}
     >
-      {pending.length === 0 ? (
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      ) : pending.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
           No pending tools. You're all caught up.
         </p>
@@ -96,10 +116,10 @@ function ToolApprovalsSection() {
                 <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" variant="ghost" onClick={() => { approveTool(t.id); toast.success(`Approved ${t.name}`); }}>
+                <Button size="sm" variant="ghost" onClick={() => handleApprove(t.id)}>
                   <Check className="size-4" /> Approve
                 </Button>
-                <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300" onClick={() => { rejectTool(t.id); toast(`Rejected ${t.name}`); }}>
+                <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300" onClick={() => handleReject(t.id)}>
                   <X className="size-4" /> Reject
                 </Button>
               </div>
@@ -112,10 +132,33 @@ function ToolApprovalsSection() {
 }
 
 function UserManagementSection() {
-  const users = useStore((s) => s.adminUsers);
-  const suspendUser = useStore((s) => s.suspendUser);
-  const activateUser = useStore((s) => s.activateUser);
-  const deleteUser = useStore((s) => s.deleteUser);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getAdminUsers()
+      .then(setUsers)
+      .catch(() => setUsers([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSuspend = async (id: string, name: string) => {
+    await api.suspendUser(id);
+    setUsers((u) => u.map((x) => x.id === id ? { ...x, role: "suspended" } : x));
+    toast(`Suspended ${name}`);
+  };
+
+  const handleActivate = (id: string, name: string) => {
+    setUsers((u) => u.map((x) => x.id === id ? { ...x, role: "user" } : x));
+    toast.success(`Reactivated ${name}`);
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
+    await api.deleteAdminUser(id);
+    setUsers((u) => u.filter((x) => x.id !== id));
+    toast.success(`Deleted ${name}`);
+  };
 
   return (
     <SectionCard
@@ -123,71 +166,58 @@ function UserManagementSection() {
       description="Suspend or remove accounts across the platform."
       icon={UserCheck}
     >
-      <div className="overflow-hidden rounded-lg border border-border">
-        <table className="w-full text-sm">
-          <thead className="bg-background text-left text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-            <tr>
-              <th className="px-4 py-2.5">User</th>
-              <th className="px-4 py-2.5">Role</th>
-              <th className="px-4 py-2.5">Status</th>
-              <th className="px-4 py-2.5 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-t border-border">
-                <td className="px-4 py-3">
-                  <div className="font-medium">{u.name}</div>
-                  <div className="text-xs text-muted-foreground">{u.email}</div>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">{u.role}</td>
-                <td className="px-4 py-3">
-                  <span className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                    u.status === "active"
-                      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
-                      : "border-amber-400/30 bg-amber-400/10 text-amber-300",
-                  )}>
-                    <span className={cn("size-1.5 rounded-full", u.status === "active" ? "bg-emerald-400" : "bg-amber-400")} />
-                    {u.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex justify-end gap-1">
-                    {u.status === "active" ? (
-                      <Button size="sm" variant="ghost" onClick={() => { suspendUser(u.id); toast(`Suspended ${u.name}`); }}>
-                        <UserX className="size-4" /> Suspend
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="ghost" onClick={() => { activateUser(u.id); toast.success(`Reactivated ${u.name}`); }}>
-                        <UserCheck className="size-4" /> Activate
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-red-400 hover:text-red-300"
-                      onClick={() => {
-                        if (confirm(`Delete ${u.name}? This cannot be undone.`)) {
-                          deleteUser(u.id);
-                          toast.success(`Deleted ${u.name}`);
-                        }
-                      }}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {users.length === 0 && (
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-background text-left text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">No users.</td>
+                <th className="px-4 py-2.5">User</th>
+                <th className="px-4 py-2.5">Role</th>
+                <th className="px-4 py-2.5 text-right">Actions</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id} className="border-t border-border">
+                  <td className="px-4 py-3">
+                    <div className="font-medium">{u.name}</div>
+                    <div className="text-xs text-muted-foreground">{u.email}</div>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{u.role}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      {u.role !== "suspended" ? (
+                        <Button size="sm" variant="ghost" onClick={() => handleSuspend(u.id, u.name)}>
+                          <UserX className="size-4" /> Suspend
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="ghost" onClick={() => handleActivate(u.id, u.name)}>
+                          <UserCheck className="size-4" /> Activate
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-400 hover:text-red-300"
+                        onClick={() => handleDelete(u.id, u.name)}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {users.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-sm text-muted-foreground">No users.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </SectionCard>
   );
 }

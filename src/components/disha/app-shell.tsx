@@ -6,12 +6,15 @@ import { useEffect, useRef, useState } from "react";
 import { setAuthToken, setTokenRefresher } from "@/lib/api";
 import { useStore } from "@/lib/mock-store";
 
+let _dataLoaded = false;
+
 export function AppShell({ children, header }: { children: ReactNode; header?: ReactNode }) {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const navigate = useNavigate();
   const loadWorkspaces = useStore((s) => s.loadWorkspaces);
   const loadTools = useStore((s) => s.loadTools);
   const loadApiKeys = useStore((s) => s.loadApiKeys);
+  const loadUser = useStore((s) => s.loadUser);
   const initialized = useRef(false);
   const [tokenReady, setTokenReady] = useState(false);
 
@@ -44,15 +47,19 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
 
       refreshToken().then(() => {
         setTokenReady(true);
-        loadWorkspaces();
-        loadTools();
-        loadApiKeys();
+        if (!_dataLoaded) {
+          _dataLoaded = true;
+          loadWorkspaces();
+          loadTools();
+          loadApiKeys();
+          loadUser();
+        }
       });
 
       const interval = setInterval(refreshToken, 25000);
       return () => clearInterval(interval);
     }
-  }, [isLoaded, isSignedIn, getToken, loadWorkspaces, loadTools]);
+  }, [isLoaded, isSignedIn, getToken, loadWorkspaces, loadTools, loadApiKeys, loadUser]);
 
   if (!isLoaded || !isSignedIn || !tokenReady) {
     return (

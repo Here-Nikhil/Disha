@@ -68,7 +68,6 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     token = auth_header.removeprefix("Bearer ").strip()
-    print(f"TOKEN LENGTH: {len(token)}, STARTS WITH: {token[:10]}")
 
     clerk_secret = os.environ.get("CLERK_SECRET_KEY", "")
     if not clerk_secret:
@@ -248,15 +247,21 @@ async def delete_workspace(
     if workspace.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not your workspace")
 
+    from sqlalchemy import delete as sql_delete
+
+    # Delete generated prompts first
+    await db.execute(sql_delete(GeneratedPrompt).where(GeneratedPrompt.workspace_id == workspace.id))
+
+    # Delete messages via conversation
     conversation_result = await db.execute(
         select(Conversation).where(Conversation.workspace_id == workspace.id)
     )
     conversation = conversation_result.scalar_one_or_none()
     if conversation:
-        from sqlalchemy import delete as sql_delete
         await db.execute(sql_delete(Message).where(Message.conversation_id == conversation.id))
         await db.delete(conversation)
 
+    # Delete project
     project_result = await db.execute(
         select(Project).where(Project.workspace_id == workspace.id)
     )
@@ -615,7 +620,7 @@ async def save_api_key(
     user: User = Depends(get_current_user),
 ):
     provider = body.provider.strip()
-    if provider not in {"OpenAI", "Anthropic", "Google", "OpenRouter", "Groq"}:
+    if provider not in {"OpenAI", "Anthropic", "Google", "OpenRouter", "Groq","DeepSeek"}:
         raise HTTPException(status_code=400, detail="Unsupported provider.")
 
     if not body.api_key.strip():
@@ -641,6 +646,125 @@ async def get_api_keys(
 ):
     items = await list_api_key_providers(db, user.id)
     return [ApiKeyProviderResponse(**item) for item in items]
+
+
+@app.get("/users/me")
+async def get_current_user_profile(
+    user: User = Depends(get_current_user),
+):
+    return {
+        "id": str(user.id),
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+    }
+
+
+@app.get("/admin/tools/pending", response_model=list[ToolResponse])
+async def get_pending_tools(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    result = await db.execute(select(ToolRegistry).where(ToolRegistry.pending == True))
+    tools = result.scalars().all()
+    return [
+        ToolResponse(
+            id=t.id,
+            name=t.name,
+            category=t.category,
+            description=t.description,
+            paid=not t.is_free,
+            url=t.official_url,
+            supported_prompt_platforms=t.supported_prompt_platforms,
+        )
+        for t in tools
+    ]
+
+
+@app.post("/admin/tools/{tool_id}/approve")
+async def approve_tool(
+    tool_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    tool = await get_tool_by_id(db, tool_id)
+    tool.pending = False
+    await db.flush()
+    return {"status": "approved", "id": str(tool_id)}
+
+
+@app.delete("/admin/tools/{tool_id}/reject")
+async def reject_tool(
+    tool_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    tool = await get_tool_by_id(db, tool_id)
+    await db.delete(tool)
+    await db.flush()
+    return {"status": "rejected", "id": str(tool_id)}
+
+
+@app.get("/admin/users")
+async def get_admin_users(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    result = await db.execute(select(User).order_by(User.created_at.desc()))
+    users = result.scalars().all()
+    return [
+        {
+            "id": str(u.id),
+            "name": u.name,
+            "email": u.email,
+            "role": u.role,
+            "status": getattr(u, "status", "active"),
+            "joinedAt": u.created_at.isoformat(),
+        }
+        for u in users
+    ]
+
+
+@app.post("/admin/users/{user_id}/suspend")
+async def suspend_user(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    result = await db.execute(select(User).where(User.id == user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    target.role = "suspended"
+    await db.flush()
+    return {"status": "suspended", "id": str(user_id)}
+
+
+@app.delete("/admin/users/{user_id}")
+async def delete_user(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    result = await db.execute(select(User).where(User.id == user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.delete(target)
+    await db.flush()
+    return {"status": "deleted", "id": str(user_id)}
 
 
 def _fallback_prompt(tool_name: str, platform: str, error: str | None = None) -> str:

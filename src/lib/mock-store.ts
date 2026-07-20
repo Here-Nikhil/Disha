@@ -84,7 +84,7 @@ export type Tool = {
   pending?: boolean;
 };
 
-export type ApiProvider = "OpenAI" | "Anthropic" | "Google" | "OpenRouter" | "Groq";
+export type ApiProvider = "OpenAI" | "Anthropic" | "Google" | "OpenRouter" | "Groq" | "DeepSeek";
 export type ApiKeyStatus = "unset" | "valid" | "invalid";
 export type VoiceProvider = "Groq" | "OpenAI" | "Google";
 
@@ -127,6 +127,7 @@ type State = {
   loadWorkspaces: () => Promise<void>;
   loadTools: () => Promise<void>;
   loadApiKeys: () => Promise<void>;
+  loadUser: () => Promise<void>;
 };
 
 let _uidCounter = 0;
@@ -164,6 +165,7 @@ export const useStore = create<State>((set, get) => ({
     Google: { value: "", status: "unset" },
     OpenRouter: { value: "", status: "unset" },
     Groq: { value: "", status: "unset" },
+    DeepSeek: { value: "", status: "unset" },
   },
   useAccountKeys: true,
   voiceProvider: "auto",
@@ -256,6 +258,15 @@ export const useStore = create<State>((set, get) => ({
       set((s) => ({ apiKeys: { ...s.apiKeys, ...updates } }));
     } catch (e) {
       console.error("Failed to load api keys", e);
+    }
+  },
+
+  loadUser: async () => {
+    try {
+      const data = await api.getCurrentUser();
+      set((s) => ({ user: { ...s.user, name: data.name, email: data.email, role: data.role } }));
+    } catch (e) {
+      console.error("Failed to load user", e);
     }
   },
 
