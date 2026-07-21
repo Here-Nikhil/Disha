@@ -52,44 +52,6 @@ export function TechBadge({ label }: { label: string }) {
   );
 }
 
-function extractOptions(content: string): string[] {
-  // Split into paragraphs/sections by double newline
-  const sections = content.split(/\n\n+/);
-  
-  // Find the last section that contains bullet points
-  let lastBulletSection = "";
-  for (const section of sections) {
-    const lines = section.split("\n");
-    const hasTopLevelBullet = lines.some(
-      (line) => !line.match(/^\s{3,}/) && line.match(/^[\s]*[-*•]\s+/) && !line.match(/^\s*[-*•]\s+(Pros|Cons|My Rec|✅)/)
-    );
-    if (hasTopLevelBullet) lastBulletSection = section;
-  }
-
-  if (!lastBulletSection) return [];
-
-  const options: string[] = [];
-  for (const line of lastBulletSection.split("\n")) {
-    if (line.match(/^\s{3,}/)) continue;
-    const match = line.match(/^[\s]*[-*•]\s+(.+)/) || line.match(/^[\s]*\d+\.\s+(.+)/);
-    if (match) {
-      let text = match[1].replace(/\*\*/g, "").trim();
-      if (text.includes(":")) text = text.split(":")[0].trim();
-      if (
-        text.length > 2 &&
-        text.length < 60 &&
-        !text.startsWith("Pros") &&
-        !text.startsWith("Cons") &&
-        !text.startsWith("My Recommendation") &&
-        !text.startsWith("✅")
-      ) {
-        options.push(text);
-      }
-    }
-  }
-  return options.slice(0, 6);
-}
-
 function OptionsBlock({ options, onSend }: { options: string[]; onSend: (text: string) => void }) {
   const [customMode, setCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
@@ -176,6 +138,12 @@ export function ChatBubble({ message, onGeneratePrompt, onSend }: { message: Cha
     );
   }
 
+  // Only show quick replies if the backend explicitly provided structured options
+  const quickReplyOptions: string[] =
+    Array.isArray(message.quick_reply_options) && message.quick_reply_options.length > 0
+      ? message.quick_reply_options
+      : [];
+
   return (
     <div className="flex gap-3">
       <div className="grid size-8 shrink-0 place-items-center rounded-full bg-disha/15 text-disha ring-1 ring-disha/30">
@@ -206,12 +174,9 @@ export function ChatBubble({ message, onGeneratePrompt, onSend }: { message: Cha
           <PromptCard generatedPrompt={message.generated_prompt} />
         )}
 
-        {(message.kind === "text" || message.kind === "tool") && onSend && (() => {
-          const options = extractOptions(message.content);
-          return options.length > 1 ? (
-            <OptionsBlock options={options} onSend={onSend} />
-          ) : null;
-        })()}
+        {onSend && quickReplyOptions.length > 0 && (
+          <OptionsBlock options={quickReplyOptions} onSend={onSend} />
+        )}
       </div>
     </div>
   );

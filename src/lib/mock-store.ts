@@ -51,6 +51,7 @@ export type ChatMessage = {
     platform: string;
     body: string;
   };
+  quick_reply_options?: string[];
   createdAt: number;
 };
 
@@ -199,6 +200,9 @@ export const useStore = create<State>((set, get) => ({
             }
           : undefined,
         generated_prompt: m.generated_prompt || undefined,
+        quick_reply_options: Array.isArray(m.quick_reply_options) && m.quick_reply_options.length > 0
+          ? m.quick_reply_options
+          : undefined,
         createdAt: new Date(m.created_at).getTime(),
       }));
       set((s) => ({
@@ -416,6 +420,9 @@ export const useStore = create<State>((set, get) => ({
           tools: toolsArr,
           consensus,
           generated_prompt: generatedPrompt,
+          quick_reply_options: Array.isArray(msg.quick_reply_options) && msg.quick_reply_options.length > 0
+            ? msg.quick_reply_options
+            : undefined,
           createdAt: Date.now(),
         };
 
@@ -441,7 +448,6 @@ export const useStore = create<State>((set, get) => ({
           set((s) => ({ prompts: [newPrompt, ...s.prompts] }));
         }
 
-        // Record token usage if available in response
         if (reply.usage && reply.usage.total_tokens && reply.usage.provider) {
           get().recordTokenUsage(reply.usage.provider, reply.usage.total_tokens);
         }
@@ -490,7 +496,7 @@ export const useStore = create<State>((set, get) => ({
     const status: ApiKeyStatus =
       value.length === 0 ? "unset" : value.length > 20 ? "valid" : "invalid";
     set((s) => ({ apiKeys: { ...s.apiKeys, [provider]: { value, status } } }));
-    if (value) localStorage.setItem(`apikey_${provider}`, value);   // ← localStorage
+    if (value) localStorage.setItem(`apikey_${provider}`, value);
     else localStorage.removeItem(`apikey_${provider}`);
     api.saveApiKey(provider, value).catch(() => {});
   },

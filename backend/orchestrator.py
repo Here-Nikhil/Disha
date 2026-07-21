@@ -75,6 +75,18 @@ def _matches_any(text: str, patterns: list[str]) -> bool:
     return any(re.search(p, lowered) for p in patterns)
 
 
+def _is_pure_greeting(text: str) -> bool:
+    """Returns True only if the message is SOLELY a greeting with no project content."""
+    lowered = text.lower().strip()
+    # Must match a greeting pattern
+    if not _matches_any(text, GREETING_PATTERNS):
+        return False
+    # If the message is longer than ~5 words, it likely has project content too
+    if len(lowered.split()) > 5:
+        return False
+    return True
+
+
 def _provider_for_model(model: str) -> str:
     model_lower = model.lower()
     if "claude" in model_lower:
@@ -152,7 +164,8 @@ async def _force_generate_prompt(
 
 
 def classify_message(text: str) -> str:
-    if _matches_any(text, GREETING_PATTERNS):
+    # Only classify as greeting if it's purely a greeting (no project content)
+    if _is_pure_greeting(text):
         return "greeting"
     if _matches_any(text, NAVIGATION_PATTERNS):
         return "navigation"
@@ -274,13 +287,14 @@ async def orchestrate_message(
                 confidence_delta=0,
             )
 
-    # parse_structured_json now returns (data, cleaned_text) — JSON is removed from content
+    # parse_structured_json returns (data, cleaned_text) — JSON is removed from content
     structured, content = parse_structured_json(response.content)
 
     tool_data = None
     phase = None
     tech_stack = None
     generated_prompt = None
+    quick_reply_options: list[str] = []
 
     if structured:
         recommendations = structured.get("tool_recommendations", [])
@@ -303,6 +317,14 @@ async def orchestrate_message(
 
         phase = structured.get("phase")
         tech_stack = structured.get("tech_stack")
+
+        # Extract structured quick reply options from LLM JSON
+        raw_options = structured.get("options", [])
+        if isinstance(raw_options, list):
+            quick_reply_options = [
+                o for o in raw_options
+                if isinstance(o, str) and 2 < len(o.strip()) < 80
+            ]
 
         gp = structured.get("generated_prompt")
         if gp and gp.get("title") and gp.get("platform") and gp.get("body"):
@@ -337,6 +359,7 @@ async def orchestrate_message(
         phase=phase,
         tech_stack=tech_stack,
         confidence_delta=8 if generated_prompt else (6 if tool_data else 5),
+        quick_reply_options=quick_reply_options if quick_reply_options else None,
     )
 
 

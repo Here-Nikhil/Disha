@@ -65,6 +65,7 @@ class MessageResponse(BaseModel):
     tools: list[ToolData] | None = None
     consensus: ConsensusData | None = None
     generated_prompt: GeneratedPromptData | None = None
+    quick_reply_options: list[str] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -140,3 +141,4 @@ class OrchestratorResult(BaseModel):
     phase: str | None = None
     tech_stack: list[str] | None = None
     confidence_delta: int = 0
+    quick_reply_options: list[str] | None = None

@@ -105,6 +105,22 @@ def message_to_response(message: Message) -> MessageResponse:
             summary=message.consensus_data.get("summary", ""),
         )
 
+    generated_prompt = None
+    if hasattr(message, "generated_prompt_data") and message.generated_prompt_data:
+        gp = message.generated_prompt_data
+        generated_prompt = GeneratedPromptData(
+            title=gp.get("title", ""),
+            platform=gp.get("platform", ""),
+            body=gp.get("body", ""),
+        )
+
+    quick_reply_options = None
+    if hasattr(message, "quick_reply_options") and message.quick_reply_options:
+        quick_reply_options = [
+            o for o in message.quick_reply_options
+            if isinstance(o, str) and o.strip()
+        ]
+
     return MessageResponse(
         id=message.id,
         author=message.author,
@@ -113,6 +129,8 @@ def message_to_response(message: Message) -> MessageResponse:
         tool=tool,
         tools=tools,
         consensus=consensus,
+        generated_prompt=generated_prompt,
+        quick_reply_options=quick_reply_options or None,
         created_at=message.created_at,
     )
 

@@ -355,6 +355,7 @@ async def send_message(
         tool_data=orchestration.tool_data,
         consensus_data=orchestration.consensus_data,
         generated_prompt_data=orchestration.generated_prompt.model_dump() if orchestration.generated_prompt else None,
+        quick_reply_options=orchestration.quick_reply_options,
     )
 
     if orchestration.generated_prompt:
@@ -483,6 +484,7 @@ async def stream_message(
                 tool_data=orchestration.tool_data,
                 consensus_data=orchestration.consensus_data,
                 generated_prompt_data=orchestration.generated_prompt.model_dump() if orchestration.generated_prompt else None,
+                quick_reply_options=orchestration.quick_reply_options,
             )
             stream_db.add(assistant_message)
 
@@ -518,6 +520,7 @@ async def stream_message(
             "tool": orchestration.tool_data,
             "consensus": orchestration.consensus_data,
             "generated_prompt": orchestration.generated_prompt.model_dump() if orchestration.generated_prompt else None,
+            "quick_reply_options": orchestration.quick_reply_options,
         }
         yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
 
