@@ -1,9 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/disha/app-shell";
-import { useStore, type Phase } from "@/lib/mock-store";
+import { useStore, type Phase, type ApiProvider } from "@/lib/mock-store";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { ChatBubble, ConfidenceRing, TechBadge } from "@/components/disha/chat-pieces";
 import { ArrowUp, Mic, Sparkles, Square } from "lucide-react";
 import { toast } from "sonner";
@@ -43,16 +42,23 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
+// Token limits per provider for display (daily/monthly reset)
+const PROVIDER_TOKEN_INFO: Record<string, { limit: number; resetLabel: string }> = {
+  Groq: { limit: 500000, resetLabel: "resets daily" },
+  OpenAI: { limit: 1000000, resetLabel: "pay-per-use" },
+  Anthropic: { limit: 1000000, resetLabel: "pay-per-use" },
+  Google: { limit: 1000000, resetLabel: "pay-per-use" },
+  DeepSeek: { limit: 1000000, resetLabel: "pay-per-use" },
+};
+
 function WorkspaceRoute() {
   const { id } = Route.useParams();
   const workspaces = useStore((s) => s.workspaces);
   const workspace = workspaces.find((w) => w.id === id);
   const setActive = useStore((s) => s.setActiveWorkspace);
   const sendMessage = useStore((s) => s.sendMessage);
-  const addPrompt = useStore((s) => s.addPrompt);
   const renameWorkspace = useStore((s) => s.renameWorkspace);
   const navigate = useNavigate();
-
   const loadMessages = useStore((s) => s.loadMessages);
 
   useEffect(() => {
@@ -122,6 +128,8 @@ function ChatView({
   onGeneratePrompt: (toolName: string) => void;
 }) {
   const workspace = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))!;
+  const tokenUsage = useStore((s) => s.tokenUsage);
+  const activeProvider = useStore((s) => s.activeProvider);
   const [value, setValue] = useState("");
   const [thinking, setThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -144,6 +152,22 @@ function ChatView({
     setThinking(true);
   };
 
+  const providerInfo = activeProvider ? PROVIDER_TOKEN_INFO[activeProvider] : null;
+  const used = activeProvider ? (tokenUsage[activeProvider] ?? 0) : 0;
+  const limit = providerInfo?.limit ?? 1000000;
+  const pct = Math.min(100, Math.round((used / limit) * 100));
+
+  // Groq resets daily — calculate time until next midnight UTC
+  const groqResetLabel = (() => {
+    const now = new Date();
+    const midnight = new Date();
+    midnight.setUTCHours(24, 0, 0, 0);
+    const diff = midnight.getTime() - now.getTime();
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    return `resets in ${h}h ${m}m`;
+  })();
+
   return (
     <div className="flex h-[calc(100vh-3.5rem)] min-w-0">
       <div className="flex min-w-0 flex-1 flex-col lg:flex-[2]">
@@ -159,7 +183,7 @@ function ChatView({
             {thinking && <ThinkingIndicator />}
           </div>
         </div>
-        <div className="border-t border-border p-4 md:px-8">
+        <div className="border-t border-border px-4 pt-3 pb-2 md:px-8">
           <Composer
             value={value}
             onChange={setValue}
@@ -170,6 +194,23 @@ function ChatView({
                 : "Ask Disha about your architecture... (Shift+Enter for new line)"
             }
           />
+          {activeProvider && (
+            <div className="mx-auto mt-2 flex max-w-3xl items-center gap-3">
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {activeProvider}: {pct}% · {used.toLocaleString()} / {limit.toLocaleString()} tokens ·{" "}
+                {activeProvider === "Groq" ? groqResetLabel : providerInfo?.resetLabel}
+              </span>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    pct > 80 ? "bg-red-500" : pct > 50 ? "bg-amber-500" : "bg-primary",
+                  )}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -270,8 +311,17 @@ function Composer({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const apiKeys = useStore((s) => s.apiKeys);
   const voiceProvider = useStore((s) => s.voiceProvider);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [value]);
 
   const stopVisualizer = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -321,7 +371,12 @@ function Composer({
     }
     setTranscribing(true);
     try {
-      const rawKey = sessionStorage.getItem(`apikey_${provider}`) || apiKeys[provider].value;
+      // Voice persistence fix: get key from apiKeys store (loaded from backend on init)
+      const rawKey = apiKeys[provider as ApiProvider]?.value || "";
+      if (!rawKey) {
+        toast.error(`No ${provider} API key found. Please save it in Settings.`);
+        return;
+      }
       const text = await transcribeAudio(blob, provider, rawKey);
       if (text) onChange(value ? `${value} ${text}` : text);
       else toast.message("No speech detected.");
@@ -380,7 +435,8 @@ function Composer({
 
   return (
     <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border border-border bg-card p-2">
-      <Textarea
+      <textarea
+        ref={textareaRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -391,7 +447,7 @@ function Composer({
         }}
         rows={1}
         placeholder={placeholder}
-        className="min-h-[40px] max-h-40 resize-none border-0 bg-transparent px-2 py-2 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="min-h-[40px] max-h-[200px] w-full flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm shadow-none outline-none focus:ring-0"
       />
       <Button
         size={listening ? "default" : "icon"}

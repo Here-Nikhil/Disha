@@ -122,12 +122,15 @@ async def seed_tool_registry(db: AsyncSession) -> None:
     await db.flush()
 
 
+from crawler import start_scheduler
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     async with get_session_factory()() as session:
         await seed_tool_registry(session)
         await session.commit()
+    asyncio.create_task(start_scheduler())
     yield
     await dispose_engine()
 
@@ -545,6 +548,43 @@ async def list_tools(db: AsyncSession = Depends(get_db)):
         )
         for t in tools
     ]
+
+
+@app.post("/tools/submit")
+async def submit_tool(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    name = (body.get("name") or "").strip()
+    category = (body.get("category") or "").strip()
+    description = (body.get("description") or "").strip()
+    url = (body.get("url") or "").strip()
+    is_free = bool(body.get("is_free", True))
+
+    if not name or not category or not description or not url:
+        raise HTTPException(status_code=400, detail="name, category, description, and url are required")
+
+    if category not in ("IDE", "Deployment", "Database", "Frontend", "Backend"):
+        raise HTTPException(status_code=400, detail="Invalid category")
+
+    result = await db.execute(select(ToolRegistry).where(ToolRegistry.name == name))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Tool with this name already exists")
+
+    tool = ToolRegistry(
+        name=name,
+        category=category,
+        description=description[:200],
+        is_free=is_free,
+        official_url=url,
+        supported_prompt_platforms=[],
+        pending=True,
+        discovered_date=None,
+    )
+    db.add(tool)
+    await db.flush()
+    return {"status": "submitted", "message": "Tool submitted for review"}
 
 
 @app.post("/tools/{tool_id}/generate-prompt", response_model=PromptResponse)

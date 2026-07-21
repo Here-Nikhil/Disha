@@ -75,4 +75,6 @@ export const api = {
   suspendUser: (id: string) => req<any>(`/admin/users/${id}/suspend`, { method: "POST" }),
   deleteAdminUser: (id: string) => req<any>(`/admin/users/${id}`, { method: "DELETE" }),
   getCurrentUser: () => req<any>("/users/me"),
+  submitTool: (body: { name: string; category: string; description: string; url: string; is_free: boolean }) =>
+    req<any>("/tools/submit", { method: "POST", body: JSON.stringify(body) }),
 };

@@ -104,6 +104,8 @@ type State = {
   tools: Tool[];
   prompts: Prompt[];
   isInitializing: boolean;
+  tokenUsage: Record<string, number>;
+  activeProvider: string | null;
   apiKeys: Record<ApiProvider, { value: string; status: ApiKeyStatus }>;
   useAccountKeys: boolean;
   voiceProvider: VoiceProvider | "auto";
@@ -132,6 +134,8 @@ type State = {
   loadUser: () => Promise<void>;
   loadPrompts: () => Promise<void>;
   deletePrompt: (id: string) => Promise<void>;
+  recordTokenUsage: (provider: string, tokens: number) => void;
+  setActiveProvider: (provider: string) => void;
 };
 
 let _uidCounter = 0;
@@ -144,6 +148,8 @@ export const useStore = create<State>((set, get) => ({
   tools: [],
   prompts: [],
   isInitializing: true,
+  tokenUsage: {},
+  activeProvider: null,
   apiKeys: {
     OpenAI: { value: "", status: "unset" },
     Anthropic: { value: "", status: "unset" },
@@ -157,6 +163,16 @@ export const useStore = create<State>((set, get) => ({
   adminUsers: [],
 
   setVoiceProvider: (v) => set({ voiceProvider: v }),
+
+  recordTokenUsage: (provider, tokens) =>
+    set((s) => ({
+      tokenUsage: {
+        ...s.tokenUsage,
+        [provider]: (s.tokenUsage[provider] ?? 0) + tokens,
+      },
+    })),
+
+  setActiveProvider: (provider) => set({ activeProvider: provider }),
 
   approveTool: (id) => set((s) => ({ tools: s.tools.map((t) => (t.id === id ? { ...t, pending: false } : t)) })),
   rejectTool: (id) => set((s) => ({ tools: s.tools.filter((t) => t.id !== id) })),
@@ -242,6 +258,10 @@ export const useStore = create<State>((set, get) => ({
         }
       }
       set((s) => ({ apiKeys: { ...s.apiKeys, ...updates } }));
+      // Set active provider based on priority
+      const priority: ApiProvider[] = ["Groq", "OpenAI", "Anthropic", "Google", "DeepSeek"];
+      const active = priority.find((p) => updates[p]?.status === "valid");
+      if (active) set({ activeProvider: active });
     } catch (e) {
       console.error("Failed to load api keys", e);
     }
@@ -409,7 +429,6 @@ export const useStore = create<State>((set, get) => ({
             }
           : {};
 
-        // If a prompt was generated, add it to the global prompts list
         if (generatedPrompt) {
           const newPrompt: Prompt = {
             id: uid(),
@@ -419,6 +438,11 @@ export const useStore = create<State>((set, get) => ({
             createdAt: Date.now(),
           };
           set((s) => ({ prompts: [newPrompt, ...s.prompts] }));
+        }
+
+        // Record token usage if available in response
+        if (reply.usage && reply.usage.total_tokens && reply.usage.provider) {
+          get().recordTokenUsage(reply.usage.provider, reply.usage.total_tokens);
         }
 
         set((s) => ({

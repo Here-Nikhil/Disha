@@ -131,6 +131,7 @@ class ToolRegistry(Base):
     official_url: Mapped[str] = mapped_column(String(500), nullable=False)
     supported_prompt_platforms: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     pending: Mapped[bool] = mapped_column(Boolean, default=False)
+    discovered_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
 class GeneratedPrompt(Base):

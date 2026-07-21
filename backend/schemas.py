@@ -1,8 +1,9 @@
 from datetime import datetime
 from typing import Any
 from uuid import UUID
+import uuid
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WorkspaceCreate(BaseModel):
@@ -76,15 +77,16 @@ class SendMessageResponse(BaseModel):
 
 
 class ToolResponse(BaseModel):
-    id: UUID
+    id: uuid.UUID
     name: str
     category: str
     description: str
     paid: bool
     url: str
-    supported_prompt_platforms: list[str]
+    supported_prompt_platforms: list[str] = []
+    discovered_date: str | None = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class GeneratePromptRequest(BaseModel):
