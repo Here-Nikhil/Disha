@@ -43,6 +43,8 @@ export const api = {
     req<any>("/workspaces", { method: "POST", body: JSON.stringify({ name }) }),
   deleteWorkspace: (id: string) =>
     req<any>(`/workspaces/${id}`, { method: "DELETE" }),
+  updateWorkspace: (id: string, body: { name?: string; default_model?: string }) =>
+    req<any>(`/workspaces/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   getMessages: (workspaceId: string) =>
     req<any[]>(`/workspaces/${workspaceId}/messages`),
   sendMessage: (workspaceId: string, content: string) =>
@@ -53,6 +55,8 @@ export const api = {
   getTools: () => req<any[]>("/tools"),
   getPrompts: (workspaceId?: string) =>
     req<any[]>(`/prompts${workspaceId ? `?workspace_id=${workspaceId}` : ""}`),
+  deletePrompt: (id: string) =>
+    req<any>(`/prompts/${id}`, { method: "DELETE" }),
   generatePrompt: (toolId: string, workspaceId: string, platform: string) =>
     req<any>(`/tools/${toolId}/generate-prompt`, {
       method: "POST",

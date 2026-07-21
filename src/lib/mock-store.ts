@@ -102,6 +102,8 @@ type State = {
   workspaces: Workspace[];
   activeWorkspaceId: string;
   tools: Tool[];
+  prompts: Prompt[];
+  isInitializing: boolean;
   apiKeys: Record<ApiProvider, { value: string; status: ApiKeyStatus }>;
   useAccountKeys: boolean;
   voiceProvider: VoiceProvider | "auto";
@@ -109,9 +111,9 @@ type State = {
 
   createWorkspace: (name?: string) => Promise<string>;
   setActiveWorkspace: (id: string) => void;
-  renameWorkspace: (id: string, name: string) => void;
+  renameWorkspace: (id: string, name: string) => Promise<void>;
   deleteWorkspace: (id: string) => Promise<void>;
-  setDefaultModel: (id: string, model: string) => void;
+  setDefaultModel: (id: string, model: string) => Promise<void>;
   sendMessage: (workspaceId: string, text: string) => void;
   addPrompt: (workspaceId: string, prompt: Omit<Prompt, "id" | "createdAt">) => void;
   saveApiKey: (provider: ApiProvider, value: string) => void;
@@ -128,37 +130,20 @@ type State = {
   loadTools: () => Promise<void>;
   loadApiKeys: () => Promise<void>;
   loadUser: () => Promise<void>;
+  loadPrompts: () => Promise<void>;
+  deletePrompt: (id: string) => Promise<void>;
 };
 
 let _uidCounter = 0;
 const uid = () => `id${(++_uidCounter).toString(36)}`;
 
-const seedTools: Tool[] = [
-  { id: uid(), name: "Cursor", category: "IDE", description: "AI-first code editor with deep repo understanding.", paid: true, url: "#" },
-  { id: uid(), name: "Claude Code", category: "IDE", description: "Terminal-native coding agent by Anthropic.", paid: true, url: "#" },
-  { id: uid(), name: "Windsurf", category: "IDE", description: "Agentic IDE with cascading edits across the codebase.", paid: false, url: "#" },
-  { id: uid(), name: "Vercel", category: "Deployment", description: "Zero-config deployment for frontend frameworks.", paid: false, url: "#" },
-  { id: uid(), name: "Fly.io", category: "Deployment", description: "Run full-stack apps close to your users worldwide.", paid: true, url: "#" },
-  { id: uid(), name: "Cloudflare Workers", category: "Deployment", description: "Serverless edge functions on 300+ POPs.", paid: false, url: "#" },
-  { id: uid(), name: "Supabase", category: "Database", description: "Postgres, auth, storage, realtime in one platform.", paid: false, url: "#" },
-  { id: uid(), name: "Neon", category: "Database", description: "Serverless Postgres with branching.", paid: false, url: "#" },
-  { id: uid(), name: "PlanetScale", category: "Database", description: "MySQL with schema branching and horizontal scale.", paid: true, url: "#" },
-  { id: uid(), name: "Next.js", category: "Frontend", description: "React framework with SSR, RSC, and file routing.", paid: false, url: "#" },
-  { id: uid(), name: "TanStack Start", category: "Frontend", description: "Full-stack React with typed routing and server fns.", paid: false, url: "#" },
-  { id: uid(), name: "Astro", category: "Frontend", description: "Content-focused framework with islands architecture.", paid: false, url: "#" },
-  { id: uid(), name: "Hono", category: "Backend", description: "Ultrafast web framework for edges and Node.", paid: false, url: "#" },
-  { id: uid(), name: "tRPC", category: "Backend", description: "End-to-end typesafe APIs without codegen.", paid: false, url: "#" },
-  { id: uid(), name: "Inngest", category: "Backend", description: "Durable event-driven workflows and background jobs.", paid: true, url: "#" },
-  { id: uid(), name: "Resend", category: "Backend", description: "Modern email API for developers.", paid: true, url: "#" },
-  { id: uid(), name: "Convex", category: "Database", description: "Reactive database with typed queries and mutations.", paid: true, url: "#", pending: true },
-  { id: uid(), name: "Zed", category: "IDE", description: "High-performance collaborative editor with AI.", paid: false, url: "#", pending: true },
-];
-
 export const useStore = create<State>((set, get) => ({
   user: { name: "", email: "", role: "user", provider: "clerk" },
   workspaces: [],
   activeWorkspaceId: "",
-  tools: seedTools,
+  tools: [],
+  prompts: [],
+  isInitializing: true,
   apiKeys: {
     OpenAI: { value: "", status: "unset" },
     Anthropic: { value: "", status: "unset" },
@@ -172,6 +157,7 @@ export const useStore = create<State>((set, get) => ({
   adminUsers: [],
 
   setVoiceProvider: (v) => set({ voiceProvider: v }),
+
   approveTool: (id) => set((s) => ({ tools: s.tools.map((t) => (t.id === id ? { ...t, pending: false } : t)) })),
   rejectTool: (id) => set((s) => ({ tools: s.tools.filter((t) => t.id !== id) })),
   suspendUser: (id) => set((s) => ({ adminUsers: s.adminUsers.map((u) => (u.id === id ? { ...u, status: "suspended" } : u)) })),
@@ -220,7 +206,7 @@ export const useStore = create<State>((set, get) => ({
         confidence: w.confidence || 0,
         messages: [],
         prompts: [],
-        defaultModel: "llama-3.3-70b",
+        defaultModel: w.default_model || "llama-3.3-70b",
       }));
       set({ workspaces: mapped, activeWorkspaceId: mapped[0]?.id ?? "" });
     } catch (e) {
@@ -270,6 +256,31 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  loadPrompts: async () => {
+    try {
+      const data = await api.getPrompts();
+      const mapped: Prompt[] = (data || []).map((p: any) => ({
+        id: p.id,
+        title: p.title,
+        platform: p.platform as Platform,
+        body: p.body,
+        createdAt: new Date(p.created_at).getTime(),
+      }));
+      set({ prompts: mapped });
+    } catch (e) {
+      console.error("Failed to load prompts", e);
+    }
+  },
+
+  deletePrompt: async (id) => {
+    set((s) => ({ prompts: s.prompts.filter((p) => p.id !== id) }));
+    try {
+      await api.deletePrompt(id);
+    } catch (e) {
+      console.error("Failed to delete prompt", e);
+    }
+  },
+
   createWorkspace: async (name) => {
     try {
       const data = await api.createWorkspace(name || "Untitled workspace");
@@ -306,10 +317,16 @@ export const useStore = create<State>((set, get) => ({
 
   setActiveWorkspace: (id) => set({ activeWorkspaceId: id }),
 
-  renameWorkspace: (id, name) =>
+  renameWorkspace: async (id, name) => {
     set((s) => ({
       workspaces: s.workspaces.map((w) => (w.id === id ? { ...w, name } : w)),
-    })),
+    }));
+    try {
+      await api.updateWorkspace(id, { name });
+    } catch (e) {
+      console.error("Failed to rename workspace", e);
+    }
+  },
 
   deleteWorkspace: async (id) => {
     try {
@@ -327,10 +344,16 @@ export const useStore = create<State>((set, get) => ({
     });
   },
 
-  setDefaultModel: (id, model) =>
+  setDefaultModel: async (id, model) => {
     set((s) => ({
       workspaces: s.workspaces.map((w) => (w.id === id ? { ...w, defaultModel: model } : w)),
-    })),
+    }));
+    try {
+      await api.updateWorkspace(id, { default_model: model });
+    } catch (e) {
+      console.error("Failed to save default model", e);
+    }
+  },
 
   sendMessage: (workspaceId, text) => {
     const userMsg: ChatMessage = {
@@ -349,7 +372,6 @@ export const useStore = create<State>((set, get) => ({
       .then((reply: any) => {
         const msg = reply.assistant_message || reply;
 
-        // Normalize nulls to undefined
         const generatedPrompt = msg.generated_prompt || undefined;
         const consensus = msg.consensus || undefined;
         const toolsArr: ToolRec[] | undefined =
@@ -359,7 +381,6 @@ export const useStore = create<State>((set, get) => ({
             ? [msg.tool]
             : undefined;
 
-        // Determine kind — check generated_prompt first, before tools
         let kind: MessageKind = "text";
         if (generatedPrompt) kind = "prompt";
         else if (consensus) kind = "consensus";
@@ -387,6 +408,18 @@ export const useStore = create<State>((set, get) => ({
                   : undefined,
             }
           : {};
+
+        // If a prompt was generated, add it to the global prompts list
+        if (generatedPrompt) {
+          const newPrompt: Prompt = {
+            id: uid(),
+            title: generatedPrompt.title,
+            platform: generatedPrompt.platform as Platform,
+            body: generatedPrompt.body,
+            createdAt: Date.now(),
+          };
+          set((s) => ({ prompts: [newPrompt, ...s.prompts] }));
+        }
 
         set((s) => ({
           workspaces: s.workspaces.map((w) =>
@@ -421,6 +454,7 @@ export const useStore = create<State>((set, get) => ({
   addPrompt: (workspaceId, prompt) => {
     const full: Prompt = { ...prompt, id: uid(), createdAt: Date.now() };
     set((s) => ({
+      prompts: [full, ...s.prompts],
       workspaces: s.workspaces.map((w) =>
         w.id === workspaceId ? { ...w, prompts: [full, ...w.prompts] } : w,
       ),

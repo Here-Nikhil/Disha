@@ -15,6 +15,8 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
   const loadTools = useStore((s) => s.loadTools);
   const loadApiKeys = useStore((s) => s.loadApiKeys);
   const loadUser = useStore((s) => s.loadUser);
+  const loadPrompts = useStore((s) => s.loadPrompts);
+  const isInitializing = useStore((s) => s.isInitializing);
   const initialized = useRef(false);
   const [tokenReady, setTokenReady] = useState(false);
 
@@ -45,26 +47,46 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
         }
       });
 
-      refreshToken().then(() => {
+      refreshToken().then(async () => {
         setTokenReady(true);
         if (!_dataLoaded) {
           _dataLoaded = true;
-          loadWorkspaces();
-          loadTools();
-          loadApiKeys();
-          loadUser();
+          try {
+            await Promise.all([
+              loadUser(),
+              loadWorkspaces(),
+              loadTools(),
+              loadApiKeys(),
+              loadPrompts(),
+            ]);
+          } catch (e) {
+            console.error("Init failed", e);
+          } finally {
+            useStore.setState({ isInitializing: false });
+          }
         }
       });
 
       const interval = setInterval(refreshToken, 25000);
       return () => clearInterval(interval);
     }
-  }, [isLoaded, isSignedIn, getToken, loadWorkspaces, loadTools, loadApiKeys, loadUser]);
+  }, [isLoaded, isSignedIn, getToken, loadWorkspaces, loadTools, loadApiKeys, loadUser, loadPrompts]);
 
   if (!isLoaded || !isSignedIn || !tokenReady) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (isInitializing) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Loading Disha...</p>
+        </div>
       </div>
     );
   }

@@ -42,6 +42,7 @@ from services import (
     save_api_key_for_user,
 )
 from summarizer import maybe_summarize_conversation
+
 _jwks_cache: dict | None = None
 
 async def get_jwks(clerk_secret: str) -> dict:
@@ -96,7 +97,6 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
         clerk_id = decoded.get("sub")
 
     except Exception as e:
-        print(f"TOKEN DECODE ERROR: {e}")
         raise HTTPException(status_code=401, detail="Invalid session token")
 
     result = await db.execute(select(User).where(User.clerk_id == clerk_id))
@@ -237,6 +237,25 @@ async def list_workspaces(
     return result.scalars().all()
 
 
+@app.patch("/workspaces/{workspace_id}")
+async def update_workspace(
+    workspace_id: UUID,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    workspace = await ensure_workspace(db, workspace_id)
+    if workspace.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not your workspace")
+    if "name" in body:
+        workspace.name = body["name"]
+    if "default_model" in body:
+        workspace.default_model = body["default_model"]
+    await db.flush()
+    await db.refresh(workspace)
+    return WorkspaceResponse.model_validate(workspace)
+
+
 @app.delete("/workspaces/{workspace_id}")
 async def delete_workspace(
     workspace_id: UUID,
@@ -249,10 +268,8 @@ async def delete_workspace(
 
     from sqlalchemy import delete as sql_delete
 
-    # Delete generated prompts first
     await db.execute(sql_delete(GeneratedPrompt).where(GeneratedPrompt.workspace_id == workspace.id))
 
-    # Delete messages via conversation
     conversation_result = await db.execute(
         select(Conversation).where(Conversation.workspace_id == workspace.id)
     )
@@ -261,7 +278,6 @@ async def delete_workspace(
         await db.execute(sql_delete(Message).where(Message.conversation_id == conversation.id))
         await db.delete(conversation)
 
-    # Delete project
     project_result = await db.execute(
         select(Project).where(Project.workspace_id == workspace.id)
     )
@@ -613,6 +629,26 @@ async def list_prompts(
     return result.scalars().all()
 
 
+@app.delete("/prompts/{prompt_id}")
+async def delete_prompt(
+    prompt_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(GeneratedPrompt).join(Workspace).where(
+            GeneratedPrompt.id == prompt_id,
+            Workspace.user_id == user.id,
+        )
+    )
+    prompt = result.scalar_one_or_none()
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    await db.delete(prompt)
+    await db.flush()
+    return {"status": "deleted"}
+
+
 @app.post("/settings/api-keys", response_model=ApiKeyProviderResponse)
 async def save_api_key(
     body: ApiKeyCreate,
@@ -620,7 +656,7 @@ async def save_api_key(
     user: User = Depends(get_current_user),
 ):
     provider = body.provider.strip()
-    if provider not in {"OpenAI", "Anthropic", "Google", "OpenRouter", "Groq","DeepSeek"}:
+    if provider not in {"OpenAI", "Anthropic", "Google", "OpenRouter", "Groq", "DeepSeek"}:
         raise HTTPException(status_code=400, detail="Unsupported provider.")
 
     if not body.api_key.strip():

@@ -1,12 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AppShell } from "@/components/disha/app-shell";
 import { useStore, type Platform } from "@/lib/mock-store";
-import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Copy, Download, Eye, BookText } from "lucide-react";
+import { Copy, Download, Eye, BookText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/prompts")({
@@ -19,12 +18,12 @@ export const Route = createFileRoute("/prompts")({
   component: PromptsPage,
 });
 
-type PromptResponse = {
+type PromptEntry = {
   id: string;
   title: string;
   platform: Platform;
   body: string;
-  created_at: string;
+  createdAt: number;
 };
 
 const platforms: (Platform | "All")[] = ["All", "Claude Code", "Cursor", "Lovable", "Replit", "Windsurf", "Bolt"];
@@ -39,41 +38,23 @@ const platformColor: Record<Platform, string> = {
 };
 
 function PromptsPage() {
+  const prompts = useStore((s) => s.prompts);
+  const deletePrompt = useStore((s) => s.deletePrompt);
   const activeWs = useStore((s) => s.workspaces.find((w) => w.id === s.activeWorkspaceId));
   const [platform, setPlatform] = useState<(typeof platforms)[number]>("All");
-  const [viewing, setViewing] = useState<PromptResponse | null>(null);
-  const [prompts, setPrompts] = useState<PromptResponse[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-  if (!activeWs?.id) return; // wait until workspace is available
-
-  const fetchPrompts = async () => {
-    setLoading(true);
-    try {
-      const data = await api.getPrompts(activeWs.id);
-      setPrompts(data);
-    } catch (err) {
-      toast.error("Could not load prompts");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  fetchPrompts();
-}, [activeWs?.id]);
+  const [viewing, setViewing] = useState<PromptEntry | null>(null);
 
   const filtered = useMemo(() => {
     if (platform === "All") return prompts;
     return prompts.filter((p) => p.platform === platform);
   }, [prompts, platform]);
 
-  const handleCopy = (p: PromptResponse) => {
+  const handleCopy = (p: PromptEntry) => {
     navigator.clipboard?.writeText(p.body);
     toast.success("Prompt copied to clipboard");
   };
 
-  const handleDownload = (p: PromptResponse) => {
+  const handleDownload = (p: PromptEntry) => {
     const blob = new Blob([p.body], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -86,6 +67,12 @@ function PromptsPage() {
     toast.success("Prompt downloaded");
   };
 
+  const handleDelete = async (p: PromptEntry) => {
+    await deletePrompt(p.id);
+    if (viewing?.id === p.id) setViewing(null);
+    toast.success("Prompt deleted");
+  };
+
   return (
     <AppShell header={<h1 className="font-display text-base font-semibold">Prompt Library</h1>}>
       <div className="mx-auto max-w-6xl px-4 py-8 md:px-8">
@@ -93,7 +80,9 @@ function PromptsPage() {
           <div>
             <h2 className="font-display text-3xl font-bold tracking-tight">Prompt library</h2>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              {activeWs ? <>All prompts generated for <span className="text-foreground">{activeWs.name}</span></> : "Showing all prompts across workspaces"}
+              {activeWs
+                ? <>Showing prompts for <span className="text-foreground">{activeWs.name}</span> and all workspaces</>
+                : "All prompts across your workspaces"}
             </p>
           </div>
           <div className="w-full sm:w-56">
@@ -108,14 +97,13 @@ function PromptsPage() {
           </div>
         </div>
 
-        {loading ? (
-          <div className="rounded-xl border border-dashed border-border p-12 text-center">
-            <p className="text-sm text-muted-foreground">Loading prompts…</p>
-          </div>
-        ) : filtered.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border p-12 text-center">
             <BookText className="mx-auto size-8 text-muted-foreground" />
-            <p className="mt-3 text-sm text-muted-foreground">No prompts yet. Generate one from the Tool Registry or chat with Disha.</p>
+            <p className="mt-3 text-sm font-medium text-foreground">No prompts yet</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Chat with Disha and ask it to generate a prompt, or visit the Tool Registry to generate one from a tool.
+            </p>
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -130,7 +118,7 @@ function PromptsPage() {
                       </span>
                     </div>
                     <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                      {new Date(p.created_at).toLocaleDateString()} · {p.body.slice(0, 80)}…
+                      {new Date(p.createdAt).toLocaleDateString()} · {p.body.slice(0, 80)}…
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-1">
@@ -142,6 +130,9 @@ function PromptsPage() {
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setViewing(p)}>
                       <Eye className="size-4" /> View
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => handleDelete(p)}>
+                      <Trash2 className="size-4" />
                     </Button>
                   </div>
                 </div>
@@ -155,7 +146,9 @@ function PromptsPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{viewing?.title}</DialogTitle>
-            <DialogDescription>{viewing?.platform} · {viewing && new Date(viewing.created_at).toLocaleString()}</DialogDescription>
+            <DialogDescription>
+              {viewing?.platform} · {viewing && new Date(viewing.createdAt).toLocaleString()}
+            </DialogDescription>
           </DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-4 font-mono text-xs leading-relaxed">
             {viewing?.body}
@@ -165,6 +158,9 @@ function PromptsPage() {
               <>
                 <Button variant="ghost" size="sm" onClick={() => handleCopy(viewing)}>
                   <Copy className="size-4" /> Copy
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => handleDelete(viewing)}>
+                  <Trash2 className="size-4" /> Delete
                 </Button>
                 <Button size="sm" onClick={() => handleDownload(viewing)}>
                   <Download className="size-4" /> Download
