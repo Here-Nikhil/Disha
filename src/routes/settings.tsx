@@ -19,7 +19,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { Trash2, Save } from "lucide-react";
+import { Trash2, Save, X } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/settings")({
@@ -52,7 +52,10 @@ function VoiceInputSection() {
   const apiKeys = useStore((s) => s.apiKeys);
   const voiceProvider = useStore((s) => s.voiceProvider);
   const setVoiceProvider = useStore((s) => s.setVoiceProvider);
-  const configured = (["Groq", "OpenAI", "Google"] as const).filter((p) => apiKeys[p]?.value?.trim());
+  const configured = (["Groq", "OpenAI", "Google"] as const).filter((p) => {
+    const v = apiKeys[p]?.value?.trim();
+    return !!v && v.length > 20 && !v.includes("****");
+  });
 
   return (
     <SectionCard
@@ -105,10 +108,11 @@ function SectionCard({ title, description, children }: { title: string; descript
 function ApiKeysSection() {
   const apiKeys = useStore((s) => s.apiKeys);
   const saveApiKey = useStore((s) => s.saveApiKey);
+  const removeApiKey = useStore((s) => s.removeApiKey);
   const useAccountKeys = useStore((s) => s.useAccountKeys);
   const setUseAccountKeys = useStore((s) => s.setUseAccountKeys);
   const [drafts, setDrafts] = useState<Record<ApiProvider, string>>(
-    Object.fromEntries(providers.map((p) => [p, apiKeys[p]?.value ?? ""])) as Record<ApiProvider, string>,
+    Object.fromEntries(providers.map((p) => [p, ""])) as Record<ApiProvider, string>,
   );
 
   return (
@@ -126,8 +130,9 @@ function ApiKeysSection() {
       <div className="space-y-3">
         {providers.map((p) => {
           const entry = apiKeys[p];
+          const isSet = !!entry?.value && entry.value.length > 20 && !entry.value.includes("****");
           const dot =
-            entry?.status === "valid"
+            isSet && entry?.status === "valid"
               ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]"
               : entry?.status === "invalid"
                 ? "bg-red-400"
@@ -142,19 +147,54 @@ function ApiKeysSection() {
                 type="password"
                 value={drafts[p] ?? ""}
                 onChange={(e) => setDrafts((d) => ({ ...d, [p]: e.target.value }))}
-                placeholder={entry?.value ? "••••••••••••••••" : "paste your key..."}
+                placeholder={isSet ? "key saved — paste new key to replace" : "paste your key..."}
                 className="flex-1"
               />
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => {
-                  saveApiKey(p, drafts[p] ?? "");
+                  if (!drafts[p]?.trim()) {
+                    toast.error("Paste a key first.");
+                    return;
+                  }
+                  saveApiKey(p, drafts[p]);
+                  setDrafts((d) => ({ ...d, [p]: "" }));
                   toast.success(`${p} key saved`);
                 }}
               >
                 <Save className="size-4" /> Save
               </Button>
+              {isSet && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="ghost" className="text-red-400 hover:bg-destructive/15 hover:text-red-300">
+                      <X className="size-4" /> Remove
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Remove {p} key?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will delete your {p} API key. Voice input and chat via {p} will stop working until you add a new key.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => {
+                          removeApiKey(p);
+                          setDrafts((d) => ({ ...d, [p]: "" }));
+                          toast.success(`${p} key removed`);
+                        }}
+                      >
+                        Remove
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </div>
           );
         })}

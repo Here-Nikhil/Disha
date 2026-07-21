@@ -6,7 +6,10 @@ export function pickTranscribeProvider(
   apiKeys: Record<ApiProvider, { value: string; status: string }>,
   preferred: VoiceProvider | "auto",
 ): TranscribeProvider | null {
-  const has = (p: VoiceProvider) => !!apiKeys[p]?.value?.trim();
+  const has = (p: VoiceProvider) => {
+    const v = apiKeys[p]?.value?.trim();
+    return !!v && v.length > 20 && !v.includes("****");
+  };
   if (preferred !== "auto" && has(preferred)) return preferred;
   const order: VoiceProvider[] = ["Groq", "OpenAI", "Google"];
   return order.find(has) ?? null;

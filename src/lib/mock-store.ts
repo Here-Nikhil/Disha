@@ -119,6 +119,7 @@ type State = {
   sendMessage: (workspaceId: string, text: string) => void;
   addPrompt: (workspaceId: string, prompt: Omit<Prompt, "id" | "createdAt">) => void;
   saveApiKey: (provider: ApiProvider, value: string) => void;
+  removeApiKey: (provider: ApiProvider) => void;
   setUseAccountKeys: (v: boolean) => void;
   setVoiceProvider: (v: VoiceProvider | "auto") => void;
   approveTool: (id: string) => void;
@@ -254,11 +255,11 @@ export const useStore = create<State>((set, get) => ({
       const updates: Partial<Record<ApiProvider, { value: string; status: ApiKeyStatus }>> = {};
       for (const item of data) {
         if (item.masked_key) {
-          updates[item.provider as ApiProvider] = { value: item.masked_key, status: item.status as ApiKeyStatus };
+          const realKey = localStorage.getItem(`apikey_${item.provider}`) || item.masked_key;
+          updates[item.provider as ApiProvider] = { value: realKey, status: item.status as ApiKeyStatus };
         }
       }
       set((s) => ({ apiKeys: { ...s.apiKeys, ...updates } }));
-      // Set active provider based on priority
       const priority: ApiProvider[] = ["Groq", "OpenAI", "Anthropic", "Google", "DeepSeek"];
       const active = priority.find((p) => updates[p]?.status === "valid");
       if (active) set({ activeProvider: active });
@@ -489,9 +490,20 @@ export const useStore = create<State>((set, get) => ({
     const status: ApiKeyStatus =
       value.length === 0 ? "unset" : value.length > 20 ? "valid" : "invalid";
     set((s) => ({ apiKeys: { ...s.apiKeys, [provider]: { value, status } } }));
-    if (value) sessionStorage.setItem(`apikey_${provider}`, value);
-    else sessionStorage.removeItem(`apikey_${provider}`);
+    if (value) localStorage.setItem(`apikey_${provider}`, value);   // ← localStorage
+    else localStorage.removeItem(`apikey_${provider}`);
     api.saveApiKey(provider, value).catch(() => {});
+  },
+
+  removeApiKey: (provider) => {
+    localStorage.removeItem(`apikey_${provider}`);
+    set((s) => ({
+      apiKeys: {
+        ...s.apiKeys,
+        [provider]: { value: "", status: "unset" },
+      },
+    }));
+    api.saveApiKey(provider, "").catch(() => {});
   },
 
   setUseAccountKeys: (v) => set({ useAccountKeys: v }),
