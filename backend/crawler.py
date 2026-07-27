@@ -16,14 +16,18 @@ logger = logging.getLogger(__name__)
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-CRAWLER_PROMPT = """You are a tool discovery agent. Your job is to find NEW AI developer tools that were released or gained significant attention in the last 24 hours.
+CRAWLER_PROMPT = """You are a tool discovery agent. Your job is to find AI developer tools that are not in the existing list provided.
 
-Search for new tools from these sources:
-- Product Hunt (new AI dev tools launched today)
-- GitHub Trending (new repos tagged with AI, developer tools)
-- Tech news (new AI coding tools, IDE plugins, developer productivity tools)
+Look across these sources:
+- Product Hunt (AI dev tools)
+- GitHub Trending (repos tagged with AI, developer tools)
+- Tech news (AI coding tools, IDE plugins, developer productivity tools)
+- Well-known AI developer tools that are widely used
 
-Return a JSON array of tools you find. Each tool must have:
+Existing tools (do not suggest these):
+{existing_names}
+
+Return a JSON array of 10 tools not in the list above. Each tool must have:
 - name: tool name
 - category: one of "IDE", "Deployment", "Database", "Frontend", "Backend"
 - description: one sentence description (max 120 chars)
@@ -32,7 +36,6 @@ Return a JSON array of tools you find. Each tool must have:
 - supported_prompt_platforms: array from ["Cursor", "Claude Code", "Lovable", "Replit", "Windsurf", "Bolt"] that this tool works well with
 
 Only include tools that are genuinely useful for software developers building with AI.
-Only include tools that don't already exist in common knowledge (no Vercel, Supabase, Next.js etc).
 Return ONLY the JSON array, no explanation, no markdown."""
 
 
@@ -87,8 +90,20 @@ async def run_crawler() -> None:
     logger.info("Starting tool crawler run...")
     today = datetime.now(timezone.utc).date().isoformat()
 
+    # Fetch all existing tool names first to pass to the prompt
     try:
-        raw = await _call_groq(CRAWLER_PROMPT, admin_key)
+        async with get_session_factory()() as db:
+            result = await db.execute(select(ToolRegistry.name))
+            all_names = [row[0] for row in result.fetchall()]
+    except Exception as e:
+        logger.error(f"Failed to fetch existing tool names: {e}")
+        return
+
+    try:
+        filled_prompt = CRAWLER_PROMPT.format(
+            existing_names=", ".join(all_names) if all_names else "none"
+        )
+        raw = await _call_groq(filled_prompt, admin_key)
 
         # Strip markdown fences if present
         raw = raw.strip()
@@ -106,9 +121,7 @@ async def run_crawler() -> None:
         return
 
     async with get_session_factory()() as db:
-        # Get existing tool names to avoid duplicates
-        result = await db.execute(select(ToolRegistry.name))
-        existing_names = {row[0].lower() for row in result.fetchall()}
+        existing_names = {name.lower() for name in all_names}
 
         added = 0
         for tool in tools:
@@ -146,7 +159,6 @@ async def start_scheduler() -> None:
     """Runs the crawler once at startup if needed, then every 24h at midnight UTC."""
     while True:
         now = datetime.now(timezone.utc)
-        # Calculate seconds until next midnight UTC
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
         from datetime import timedelta
         next_midnight = midnight + timedelta(days=1)
