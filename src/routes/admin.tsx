@@ -105,23 +105,47 @@ function ToolApprovalsSection() {
       ) : (
         <div className="space-y-3">
           {pending.map((t) => (
-            <div key={t.id} className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-display font-semibold">{t.name}</span>
-                  <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    {t.category}
-                  </span>
+            <div key={t.id} className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-display font-semibold">{t.name}</span>
+                    <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t.category}
+                    </span>
+                    {t.is_free !== undefined && (
+                      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider", t.is_free ? "bg-green-500/10 text-green-400" : "bg-yellow-500/10 text-yellow-400")}>
+                        {t.is_free ? "Free" : "Paid"}
+                      </span>
+                    )}
+                    {t.discovered_date && (
+                      <span className="text-[11px] text-muted-foreground">
+                        Discovered {new Date(t.discovered_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
+                  {t.supported_prompt_platforms?.length > 0 && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Works with: {t.supported_prompt_platforms.join(", ")}
+                    </p>
+                  )}
+                  {t.official_url && t.official_url !== "#" && (
+                    <p className="mt-1 text-[11px]">
+                      <a href={t.official_url} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:opacity-80">
+                        {t.official_url}
+                      </a>
+                    </p>
+                  )}
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="ghost" onClick={() => handleApprove(t.id)}>
-                  <Check className="size-4" /> Approve
-                </Button>
-                <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300" onClick={() => handleReject(t.id)}>
-                  <X className="size-4" /> Reject
-                </Button>
+                <div className="flex shrink-0 gap-2 sm:ml-4">
+                  <Button size="sm" variant="ghost" onClick={() => handleApprove(t.id)}>
+                    <Check className="size-4" /> Approve
+                  </Button>
+                  <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300" onClick={() => handleReject(t.id)}>
+                    <X className="size-4" /> Reject
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
