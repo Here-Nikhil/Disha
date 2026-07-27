@@ -36,6 +36,14 @@ Only include tools that don't already exist in common knowledge (no Vercel, Supa
 Return ONLY the JSON array, no explanation, no markdown."""
 
 
+SUMMARY_PROMPT = """You are a concise technical writer. Given the name, description, and category of an AI developer tool, write a 3-4 sentence summary covering:
+1. What the tool does
+2. Who it is for
+3. Why it is useful or notable
+
+Be specific and factual. No marketing language. Return only the summary text, no headings or bullet points."""
+
+
 async def _call_groq(prompt: str, admin_key: str) -> str:
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
@@ -52,6 +60,22 @@ async def _call_groq(prompt: str, admin_key: str) -> str:
         resp.raise_for_status()
         data = resp.json()
         return data["choices"][0]["message"]["content"]
+
+
+async def _generate_summary(tool: dict, admin_key: str) -> str:
+    prompt = f"""{SUMMARY_PROMPT}
+
+Tool name: {tool.get('name', '')}
+Category: {tool.get('category', '')}
+Description: {tool.get('description', '')}
+Official URL: {tool.get('official_url', '')}"""
+
+    try:
+        summary = await _call_groq(prompt, admin_key)
+        return summary.strip()
+    except Exception as e:
+        logger.warning(f"Summary generation failed for {tool.get('name')}: {e}")
+        return ""
 
 
 async def run_crawler() -> None:
@@ -96,6 +120,9 @@ async def run_crawler() -> None:
             if category not in ("IDE", "Deployment", "Database", "Frontend", "Backend"):
                 category = "Backend"
 
+            # Generate summary via Groq
+            summary = await _generate_summary(tool, admin_key)
+
             new_tool = ToolRegistry(
                 name=name,
                 category=category,
@@ -105,6 +132,7 @@ async def run_crawler() -> None:
                 supported_prompt_platforms=tool.get("supported_prompt_platforms") or [],
                 pending=True,
                 discovered_date=today,
+                summary=summary,
             )
             db.add(new_tool)
             existing_names.add(name.lower())

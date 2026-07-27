@@ -133,6 +133,7 @@ class ToolRegistry(Base):
     supported_prompt_platforms: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     pending: Mapped[bool] = mapped_column(Boolean, default=False)
     discovered_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class GeneratedPrompt(Base):

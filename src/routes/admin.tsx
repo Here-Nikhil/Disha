@@ -125,6 +125,11 @@ function ToolApprovalsSection() {
                     )}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
+                  {t.summary && (
+                    <p className="mt-2 text-xs text-muted-foreground leading-relaxed border-l-2 border-primary/30 pl-3">
+                      {t.summary}
+                    </p>
+                  )}
                   {t.supported_prompt_platforms?.length > 0 && (
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       Works with: {t.supported_prompt_platforms.join(", ")}

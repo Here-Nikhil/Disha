@@ -86,6 +86,7 @@ class ToolResponse(BaseModel):
     url: str
     supported_prompt_platforms: list[str] = []
     discovered_date: str | None = None
+    summary: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
