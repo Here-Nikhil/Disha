@@ -757,6 +757,9 @@ async def get_pending_tools(
             paid=not t.is_free,
             url=t.official_url,
             supported_prompt_platforms=t.supported_prompt_platforms,
+            discovered_date=t.discovered_date,
+            summary=t.summary,
+            is_free=t.is_free,
         )
         for t in tools
     ]
