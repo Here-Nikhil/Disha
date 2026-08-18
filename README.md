@@ -1,6 +1,6 @@
 # Disha Backend
 
-FastAPI backend for [Disha](https://github.com/Here-Nikhil/intellicode-navigator) — an AI architecture planning assistant. Handles workspaces, conversational AI orchestration, multi-model consensus, encrypted API key storage, tool registry, and prompt generation.
+FastAPI backend for [Disha](https://github.com/Here-Nikhil/Disha) — an AI architecture planning assistant. Handles workspaces, conversational AI orchestration, multi-model consensus, encrypted API key storage, tool registry, and prompt generation.
 
 ## Prerequisites
 
