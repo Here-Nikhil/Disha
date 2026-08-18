@@ -34,10 +34,10 @@ MODEL_ALIASES: dict[str, dict[str, str]] = {
         "claude-3.5-sonnet": "gemini-1.5-pro",
     },
     "groq": {
-        "llama-3.3-70b": "llama-3.3-70b-versatile",
-        "gpt-4o": "llama-3.3-70b-versatile",
-        "claude-3.5-sonnet": "llama-3.3-70b-versatile",
-        "gemini-1.5-pro": "llama-3.3-70b-versatile",
+        "llama-3.3-70b": "qwen/qwen3.6-27b",
+        "gpt-4o": "qwen/qwen3.6-27b",
+        "claude-3.5-sonnet": "qwen/qwen3.6-27b",
+        "gemini-1.5-pro": "qwen/qwen3.6-27b",
     },
     "deepseek": {
         "deepseek-chat": "deepseek-chat",
@@ -54,7 +54,7 @@ def resolve_model(provider: str, model: str | None) -> str:
         "openai": "gpt-4o",
         "anthropic": "claude-3-5-sonnet-20241022",
         "google": "gemini-1.5-pro",
-        "groq": "llama-3.3-70b-versatile",
+        "groq": "qwen/qwen3.6-27b",
         "deepseek": "deepseek-chat",
     }
     if not model:
