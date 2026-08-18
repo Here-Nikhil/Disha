@@ -122,15 +122,12 @@ async def seed_tool_registry(db: AsyncSession) -> None:
     await db.flush()
 
 
-from crawler import start_scheduler
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     async with get_session_factory()() as session:
         await seed_tool_registry(session)
         await session.commit()
-    asyncio.create_task(start_scheduler())
     yield
     await dispose_engine()
 
@@ -791,6 +788,18 @@ async def reject_tool(
     await db.delete(tool)
     await db.flush()
     return {"status": "rejected", "id": str(tool_id)}
+
+
+@app.post("/admin/crawl")
+async def trigger_crawl(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    from crawler import run_crawler
+    asyncio.create_task(run_crawler())
+    return {"status": "crawl started"}
 
 
 @app.get("/admin/users")
